@@ -16,8 +16,78 @@ import java.util.Set;
 /* loaded from: classes2.dex */
 public final class SplitPolicyCompat {
     private static final String TAG = "PsCanvasFix";
+    private static final String LAUNCH_EMBEDDED_TASK_ID = "androidx.activity.LaunchEmbeddedTaskId";
+    private static volatile int[] rememberedEmbeddedTaskIds = new int[0];
+    private static final ThreadLocal<Boolean> transitionActive = ThreadLocal.withInitial(() -> false);
 
     private SplitPolicyCompat() {
+    }
+
+    public static void markTransitionActive(boolean active) {
+        transitionActive.set(active);
+    }
+
+    public static boolean inTransition() {
+        return Boolean.TRUE.equals(transitionActive.get());
+    }
+
+    public static void clearTransitionActive() {
+        transitionActive.remove();
+    }
+
+    public static void rememberEmbeddedTaskIds(Object splitPolicy) {
+        int[] taskIds = toTaskIdArray(getEmbeddedTransitionEntries(splitPolicy));
+        if (taskIds.length == 0) {
+            java.util.Set<Integer> embedded = getEmbeddedCanvasTaskIds(splitPolicy);
+            if (!embedded.isEmpty()) {
+                taskIds = new int[embedded.size()];
+                int index = 0;
+                for (Integer taskId : embedded) {
+                    taskIds[index++] = taskId;
+                }
+            }
+        }
+        if (taskIds.length > 0) {
+            rememberedEmbeddedTaskIds = taskIds;
+        }
+    }
+
+    public static int[] getRememberedEmbeddedTaskIds() {
+        return rememberedEmbeddedTaskIds;
+    }
+
+    public static int[] fixZeroTaskIds(int[] taskIds) {
+        return fixTaskIdsForToggle(taskIds, taskIds != null ? taskIds.length : 0, null);
+    }
+
+    public static int[] fixTaskIdsForToggle(int[] taskIds, int expectedSize, Object splitPolicy) {
+        if (expectedSize <= 0 && taskIds != null) {
+            expectedSize = taskIds.length;
+        }
+        if (taskIds != null && taskIds.length == expectedSize && !isAllZero(taskIds)) {
+            return taskIds;
+        }
+        int[] fixed = ensureTaskIds(splitPolicy, expectedSize, taskIds);
+        if (!isAllZero(fixed)) {
+            return fixed;
+        }
+        return taskIds != null ? taskIds : new int[0];
+    }
+
+    public static boolean isAllZeroTaskIds(int[] taskIds) {
+        return isAllZero(taskIds);
+    }
+
+    private static boolean isAllZero(int[] taskIds) {
+        if (taskIds == null || taskIds.length == 0) {
+            return true;
+        }
+        for (int taskId : taskIds) {
+            if (taskId > 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static List<Object> getTransitionEntries(Object splitPolicy) {
@@ -146,6 +216,163 @@ public final class SplitPolicyCompat {
 
     public static int[] extractTaskIds(Object splitPolicy) {
         return toTaskIdArray(getEmbeddedTransitionEntries(splitPolicy));
+    }
+
+    /**
+     * e0()/W() reads LaunchEmbeddedTaskId from intents; patch from live embedded decors when missing.
+     */
+    public static void injectEmbeddedTaskIdsFromDecors(Object splitPolicy) {
+        if (splitPolicy == null) {
+            return;
+        }
+        for (Object decor : getEmbeddedDecorList(splitPolicy)) {
+            injectTaskIdForDecor(splitPolicy, decor);
+        }
+    }
+
+    public static void patchIntentListTaskIds(Object splitPolicy, List<?> intents) {
+        if (splitPolicy == null || intents == null || intents.isEmpty()) {
+            return;
+        }
+        List<?> decors = getEmbeddedDecorList(splitPolicy);
+        if (decors.isEmpty()) {
+            return;
+        }
+        int size = Math.min(decors.size(), intents.size());
+        for (int index = 0; index < size; index++) {
+            Object decor = resolveDecorAtIndex(splitPolicy, decors, index);
+            if (decor == null || !(intents.get(index) instanceof android.content.Intent)) {
+                continue;
+            }
+            int taskId = readDecorTaskId(decor);
+            if (taskId > 0) {
+                ((android.content.Intent) intents.get(index)).putExtra(LAUNCH_EMBEDDED_TASK_ID, taskId);
+            }
+        }
+    }
+
+    /** Runtime field I / jadx f14115I — embedded decor list on x1.r. */
+    public static List<?> getEmbeddedDecorList(Object splitPolicy) {
+        Object decorList = ObfFieldCompat.getObject(splitPolicy, ObfFieldCompat.R_EMBEDDED_DECORS, "f14115I");
+        if (decorList instanceof List && !((List<?>) decorList).isEmpty()) {
+            return (List<?>) decorList;
+        }
+        Object containerView = findContainerView(splitPolicy);
+        if (containerView != null) {
+            try {
+                List<?> embeddedViews = (List<?>) XposedHelpers.callMethod(
+                        containerView, "getChildEmbeddedViewList");
+                if (embeddedViews != null && !embeddedViews.isEmpty()) {
+                    return embeddedViews;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return decorList instanceof List ? (List<?>) decorList : new ArrayList<>();
+    }
+
+    /** Task IDs in G(i) order — matches x1.r.C() / e0() indexing. */
+    public static int[] buildTaskIdArrayFromDecors(Object splitPolicy, int size) {
+        int[] taskIds = new int[size];
+        List<?> decors = getEmbeddedDecorList(splitPolicy);
+        if (decors.isEmpty()) {
+            return ensureTaskIds(splitPolicy, size, taskIds);
+        }
+        for (int index = 0; index < size; index++) {
+            Object decor = resolveDecorAtIndex(splitPolicy, decors, index);
+            taskIds[index] = readDecorTaskId(decor);
+        }
+        return ensureTaskIds(splitPolicy, size, taskIds);
+    }
+
+    public static int[] ensureTaskIds(Object splitPolicy, int size, int[] taskIds) {
+        if (taskIds != null && taskIds.length == size && !isAllZero(taskIds)) {
+            return taskIds;
+        }
+        int[] fromDecors = new int[size];
+        List<?> decors = getEmbeddedDecorList(splitPolicy);
+        for (int index = 0; index < size; index++) {
+            Object decor = index < decors.size()
+                    ? resolveDecorAtIndex(splitPolicy, decors, index)
+                    : null;
+            fromDecors[index] = readDecorTaskId(decor);
+        }
+        if (!isAllZero(fromDecors)) {
+            return fromDecors;
+        }
+        int[] remembered = getRememberedEmbeddedTaskIds();
+        if (remembered.length > 0) {
+            if (remembered.length == size) {
+                return remembered;
+            }
+            int[] sized = new int[size];
+            System.arraycopy(remembered, 0, sized, 0, Math.min(size, remembered.length));
+            if (!isAllZero(sized)) {
+                return sized;
+            }
+        }
+        java.util.Set<Integer> embedded = getEmbeddedCanvasTaskIds(splitPolicy);
+        if (!embedded.isEmpty()) {
+            int[] ids = new int[Math.min(size, embedded.size())];
+            int index = 0;
+            for (Integer taskId : embedded) {
+                if (index >= ids.length) {
+                    break;
+                }
+                ids[index++] = taskId;
+            }
+            if (!isAllZero(ids)) {
+                return ids;
+            }
+        }
+        return taskIds != null ? taskIds : new int[size];
+    }
+
+    private static Object resolveDecorAtIndex(Object splitPolicy, List<?> decors, int index) {
+        if (index < 0 || index >= decors.size()) {
+            return null;
+        }
+        try {
+            int mapped = (Integer) XposedHelpers.callMethod(splitPolicy, "G", index);
+            if (mapped >= 0 && mapped < decors.size()) {
+                return decors.get(mapped);
+            }
+        } catch (Throwable ignored) {
+        }
+        return decors.get(index);
+    }
+
+    private static void injectTaskIdForDecor(Object splitPolicy, Object decor) {
+        if (decor == null) {
+            return;
+        }
+        try {
+            int taskId = readDecorTaskId(decor);
+            if (taskId <= 0) {
+                return;
+            }
+            Object intent = XposedHelpers.callMethod(splitPolicy, "E", decor);
+            if (intent instanceof android.content.Intent) {
+                ((android.content.Intent) intent).putExtra(LAUNCH_EMBEDDED_TASK_ID, taskId);
+            }
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("injectTaskIdForDecor failed", throwable);
+        }
+    }
+
+    private static int readDecorTaskId(Object decor) {
+        if (decor == null) {
+            return 0;
+        }
+        try {
+            Object taskData = XposedHelpers.callMethod(decor, "getTaskData");
+            if (taskData == null) {
+                return 0;
+            }
+            return ((Integer) XposedHelpers.callMethod(taskData, "s")).intValue();
+        } catch (Throwable throwable) {
+            return 0;
+        }
     }
 
     public static Object findEmbeddedDecorByTaskId(Object splitPolicy, int taskId) {

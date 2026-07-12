@@ -1,0 +1,8 @@
+﻿--------- beginning of system
+06-21 14:45:05.563 D/SStoFlexible(15794): getFlexibleTaskLaunchInfo:com.onyx.galaxy.note visibleBound:Rect(272, 221 - 1249, 1957) endCornerRadius:53 launchBound:Rect(272, 221 - 1406, 2237) scale:0.8611111
+06-21 14:45:05.563 D/SStoFlexible(15794): getFlexibleTaskLaunchInfo:com.trim.app visibleBound:Rect(2258, 221 - 3235, 1957) endCornerRadius:53 launchBound:Rect(2258, 221 - 3392, 2237) scale:0.8611111
+06-21 14:45:05.563 D/SStoFlexible(15794): getFlexibleTaskLaunchInfo:mark.via.gp visibleBound:Rect(1312, 221 - 2288, 1957) endCornerRadius:53 launchBound:Rect(1312, 221 - 2446, 2237) scale:0.8611111
+06-21 14:45:05.563 D/SStoFlexible(15794): startChangeAnimationToFlexibleTask start mAnimationScale:0.9951414 mScaleEnd:false startScale:0.1747644 changeScale:0.18333335
+06-21 14:45:05.568 D/CanvasGestureManager(15794): ScaleGestureDetector onScaleEnd mPointerCount:2,isInProgress:true
+06-21 14:45:05.959 D/SStoFlexible(15794): startChangeAnimationToFlexibleTask onAnimationEnd mState:4,mInit:true
+06-21 14:45:05.984 D/SStoFlexible(15794): positionChangeToSplit onAnimationEnd result:true

@@ -45,7 +45,17 @@ public final class FlexibleTransitionCompat {
     private static volatile long pinchEndUptimeMs = 0;
     private static volatile long lastZoomInvokeUptimeMs = 0;
 
+    private static volatile Object activeSplitPolicy = null;
+
     private FlexibleTransitionCompat() {
+    }
+
+    public static void setActiveSplitPolicy(Object splitPolicy) {
+        activeSplitPolicy = splitPolicy;
+    }
+
+    public static Object getActiveSplitPolicy() {
+        return activeSplitPolicy;
     }
 
     public static boolean isPrepareSwitchCall(Bundle bundle) {
@@ -113,6 +123,34 @@ public final class FlexibleTransitionCompat {
         }
         Rect maxBounds = ConfigCompat.getMaxBounds(context.getResources().getConfiguration(), context);
         ArrayList<Bundle> fixedList = new ArrayList<>(launchList.size());
+        float referenceScale = 0.0f;
+        float referenceExpandRatio = 0.0f;
+        int referenceCount = 0;
+        Iterator<?> preview = launchList.iterator();
+        while (preview.hasNext()) {
+            Object item = preview.next();
+            if (!(item instanceof Bundle)) {
+                continue;
+            }
+            Bundle launchBundle = (Bundle) item;
+            Rect launchBounds = (Rect) launchBundle.getParcelable("androidx.flexible.LaunchBounds", Rect.class);
+            Rect visualBounds = (Rect) launchBundle.getParcelable("androidx.flexible.VisualBounds", Rect.class);
+            if (!isOversizedLaunchBounds(launchBounds, visualBounds, maxBounds)) {
+                referenceScale += launchBundle.getFloat("androidx.activity.LaunchScale", 1.0f);
+                if (visualBounds != null && isValid(visualBounds) && launchBounds != null && isValid(launchBounds)
+                        && visualBounds.width() > 0) {
+                    referenceExpandRatio += (float) launchBounds.width() / visualBounds.width();
+                    referenceCount++;
+                }
+            }
+        }
+        if (referenceCount > 0) {
+            referenceScale /= referenceCount;
+            referenceExpandRatio /= referenceCount;
+        } else {
+            referenceScale = 0.8611111f;
+            referenceExpandRatio = 1.16f;
+        }
         Iterator<?> it = launchList.iterator();
         while (it.hasNext()) {
             Object item = it.next();
@@ -120,11 +158,23 @@ public final class FlexibleTransitionCompat {
                 Bundle launchBundle = new Bundle((Bundle) item);
                 Rect launchBounds = (Rect) launchBundle.getParcelable("androidx.flexible.LaunchBounds", Rect.class);
                 Rect visualBounds = (Rect) launchBundle.getParcelable("androidx.flexible.VisualBounds", Rect.class);
+                if (isOversizedLaunchBounds(launchBounds, visualBounds, maxBounds)) {
+                    Rect normalized = deriveLaunchBoundsFromVisual(visualBounds, referenceExpandRatio, maxBounds);
+                    if (normalized != null) {
+                        launchBounds = normalized;
+                        launchBundle.putParcelable("androidx.flexible.LaunchBounds", launchBounds);
+                        launchBundle.putFloat("androidx.activity.LaunchScale", referenceScale);
+                        XposedBridge.log(TAG + ": normalized oversized launch bounds to " + launchBounds
+                                + " scale=" + referenceScale);
+                    }
+                }
                 if (launchBounds != null && isValid(launchBounds)) {
-                    launchBundle.putParcelable("androidx.flexible.LaunchBounds", clampRect(launchBounds, maxBounds));
+                    launchBundle.putParcelable("androidx.flexible.LaunchBounds",
+                            clampRect(launchBounds, maxBounds));
                 }
                 if (visualBounds != null && isValid(visualBounds)) {
-                    launchBundle.putParcelable("androidx.flexible.VisualBounds", clampRect(visualBounds, maxBounds));
+                    launchBundle.putParcelable("androidx.flexible.VisualBounds",
+                            clampRect(visualBounds, maxBounds));
                 }
                 fixedList.add(launchBundle);
             }
@@ -152,6 +202,7 @@ public final class FlexibleTransitionCompat {
     public static void resetEarlySplitZoom() {
         earlySplitZoomActive.set(false);
         zoomCanvasDismissScheduled.set(false);
+        lastTransitionSucceeded.set(false);
         lastSplitPolicy = null;
         pinchEndUptimeMs = 0L;
         lastZoomInvokeUptimeMs = 0L;
@@ -317,26 +368,90 @@ public final class FlexibleTransitionCompat {
     public static boolean evaluateTransitionResult(Object splitPolicy, boolean toggleReturned, ClassLoader classLoader) {
         lastTransitionSucceeded.set(false);
         if (!toggleReturned) {
-            XposedBridge.log("PsCanvasFix: toggleMultiFlexibleWindowFromCanvas returned false");
+            PsCanvasLog.d("toggleMultiFlexibleWindowFromCanvas returned false");
+            SplitPolicyCompat.clearTransitionActive();
             return false;
         }
         int[] taskIds = SplitPolicyCompat.extractTaskIds(splitPolicy);
+        if (SplitPolicyCompat.isAllZeroTaskIds(taskIds)) {
+            taskIds = SplitPolicyCompat.getRememberedEmbeddedTaskIds();
+        }
+        if (hasValidTaskIds(taskIds)) {
+            markTransitionSucceeded(true);
+            PsCanvasLog.d("502-style transition success taskIds=" + taskIdsToString(taskIds));
+            return true;
+        }
         if (waitForFlexibleTasks(classLoader, taskIds, TRANSITION_POLL_ATTEMPTS)) {
-            lastTransitionSucceeded.set(true);
-            XposedBridge.log("PsCanvasFix: flexible tasks detected after toggleMulti");
+            markTransitionSucceeded(true);
+            PsCanvasLog.d("flexible tasks detected after toggleMulti");
             return true;
         }
         Context context = SplitPolicyCompat.findContext(splitPolicy);
         if (context == null) {
             context = resolveContext(splitPolicy, null, classLoader);
         }
-        if (tryPerTaskZoomFallback(splitPolicy, context, classLoader) && waitForFlexibleTasks(classLoader, taskIds, FALLBACK_POLL_ATTEMPTS)) {
-            lastTransitionSucceeded.set(true);
-            XposedBridge.log("PsCanvasFix: flexible tasks detected after per-task zoom fallback");
-            return true;
-        }
-        XposedBridge.log("PsCanvasFix: flexible transition failed, keeping canvas open");
+        PsCanvasLog.d("flexible transition failed, keeping canvas open");
+        SplitPolicyCompat.clearTransitionActive();
         return false;
+    }
+
+    /** 502 D(): trust WM toggle and finish canvas quickly after animation. */
+    public static void scheduleFinish502Style(final Activity activity, final ClassLoader classLoader) {
+        if (activity == null || activity.isFinishing()) {
+            return;
+        }
+        if (!wasLastTransitionSucceeded()) {
+            PsCanvasLog.d("skip 502 finish, transition not verified");
+            return;
+        }
+        if (wasZoomFallbackUsed()) {
+            scheduleZoomCanvasDismiss(activity, classLoader);
+            return;
+        }
+        new Handler(Looper.getMainLooper()).postAtFrontOfQueue(() ->
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (!activity.isFinishing() && !activity.isDestroyed()) {
+                        finish502Container(activity, classLoader);
+                    }
+                }, 150L));
+    }
+
+    private static void finish502Container(Activity activity, ClassLoader classLoader) {
+        try {
+            safeCall(activity, "L1", true);
+            activity.finish();
+            SplitPolicyCompat.clearTransitionActive();
+            PsCanvasLog.d("502-style finish ContainerActivity");
+            final int taskId = (Integer) XposedHelpers.callMethod(activity, "u0");
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (!AtmCompat.removeTask(classLoader, taskId)) {
+                    PsCanvasLog.d("502 finish removeTask skipped taskId=" + taskId);
+                }
+            }, 300L);
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("502-style finish failed", throwable);
+        }
+    }
+
+    private static void safeCall(Object target, String methodName, Object... args) {
+        try {
+            XposedHelpers.callMethod(target, methodName, args);
+        } catch (Throwable throwable) {
+            PsCanvasLog.e(methodName + "() failed", throwable);
+        }
+    }
+
+    private static boolean hasValidTaskIds(int[] taskIds) {
+        if (taskIds == null) {
+            return false;
+        }
+        int validCount = 0;
+        for (int taskId : taskIds) {
+            if (taskId > 0) {
+                validCount++;
+            }
+        }
+        return validCount >= 2;
     }
 
     public static void scheduleFinishAfterTransition(final Activity activity, final int[] taskIds, final ClassLoader classLoader) {
@@ -682,6 +797,33 @@ public final class FlexibleTransitionCompat {
                 ((Intent) intent).putExtra("ps_config_display_bound", bounds);
             }
         }
+    }
+
+    private static boolean isOversizedLaunchBounds(Rect launchBounds, Rect visualBounds, Rect maxBounds) {
+        if (launchBounds == null || visualBounds == null || !isValid(launchBounds) || !isValid(visualBounds)) {
+            return false;
+        }
+        if (launchBounds.width() >= maxBounds.width() * 0.85f) {
+            return visualBounds.width() < launchBounds.width() * 0.6f;
+        }
+        return launchBounds.width() * launchBounds.height()
+                > visualBounds.width() * visualBounds.height() * 2.5f;
+    }
+
+    private static Rect deriveLaunchBoundsFromVisual(Rect visualBounds, float expandRatio, Rect maxBounds) {
+        if (visualBounds == null || !isValid(visualBounds)) {
+            return null;
+        }
+        int width = Math.max(1, Math.round(visualBounds.width() * expandRatio));
+        int height = Math.max(1, Math.round(visualBounds.height() * expandRatio));
+        int centerX = visualBounds.centerX();
+        int centerY = visualBounds.centerY();
+        Rect derived = new Rect(
+                centerX - width / 2,
+                centerY - height / 2,
+                centerX + width / 2,
+                centerY + height / 2);
+        return clampRect(derived, maxBounds);
     }
 
     private static Rect clampRect(Rect source, Rect maxBounds) {
