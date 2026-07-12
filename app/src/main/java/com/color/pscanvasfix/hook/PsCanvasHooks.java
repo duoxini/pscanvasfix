@@ -19,6 +19,7 @@ import com.color.pscanvasfix.compat.I0Compat;
 import com.color.pscanvasfix.compat.ObfFieldCompat;
 import com.color.pscanvasfix.compat.PinchTransition502Compat;
 import com.color.pscanvasfix.compat.PsCanvasLog;
+import com.color.pscanvasfix.compat.SplitBar502Compat;
 import com.color.pscanvasfix.compat.SplitPolicyCompat;
 import com.color.pscanvasfix.compat.ThreeSplitTouch502Compat;
 
@@ -71,8 +72,8 @@ public final class PsCanvasHooks {
             return;
         }
         XposedBridge.log(TAG + ": hooking " + lpparam.packageName
-                + " v48 (502 3-app sync pinch fix)");
-        PsCanvasLog.i("install v48 hooks for " + lpparam.packageName);
+                + " v49 (502 full replication: P0-P3)");
+        PsCanvasLog.i("install v49 hooks for " + lpparam.packageName);
 
         // --- PinchTransitionHooks (502 S1.p core) ---
         hook502SplitToFlexibleRestore(lpparam);
@@ -86,6 +87,13 @@ public final class PsCanvasHooks {
         hookActivityTaskManagerCallers(lpparam);
         hookDirectWindowConfigurationAccess(lpparam);
         installDeferredHooksOnContainerStart(lpparam);
+        // --- P0: Block 700 three-split-together callback chain ---
+        hookBlockThreeSplitTogether(lpparam);
+        // --- P1: Block 700 SplitBar three-split drag ---
+        hookBlockSplitBarThreeSplitDrag(lpparam);
+        // --- P2: Z-Order + getLaunchRect panorama fix ---
+        hookBlockThreeSplitZOrder(lpparam);
+        hookFixPanoramaLaunchRect(lpparam);
         XposedBridge.log(TAG + ": critical hooks installed");
     }
 
@@ -715,8 +723,21 @@ public final class PsCanvasHooks {
                     }
                 });
 
+        // P3: beforeHook on f() — null out f13801s (r0.b callback) BEFORE
+        // layout calculation so onEnterThreeSplitTogether never fires.
+        hookBeforeMethod(lpparam, ADAPTER, "f", new Class[]{Boolean.TYPE}, param -> {
+            try {
+                Object callback = XposedHelpers.getObjectField(param.thisObject, "f13801s");
+                if (callback != null) {
+                    XposedHelpers.setObjectField(param.thisObject, "f13801s", null);
+                    PsCanvasLog.d("f() beforeHook: nulled three-split callback f13801s");
+                }
+            } catch (Throwable ignored) {
+            }
+        });
+
         hookAfterMethod(lpparam, ADAPTER, "f", new Class[]{Boolean.TYPE}, param -> {
-            ensureTwoColumnLayout(param.thisObject, "f()");
+            ensureTwoColumnLayout(param.thisObject, "f() afterHook");
         });
 
         try {
@@ -1305,5 +1326,208 @@ public final class PsCanvasHooks {
             current = current.getCause();
         }
         return false;
+    }
+
+    // ============================================================
+    // P0: Block 700 three-split-together callback chain
+    // ============================================================
+
+    /**
+     * P0 — Block 700 three-split-together callback chain.
+     * 502 has no onEnterThreeSplitTogether / onExitThreeSplitTogether.
+     * Block e3(), f3(), E2(), i2() so panorama layout 4 is never
+     * overridden by 3-equal-column setup.
+     */
+    private static void hookBlockThreeSplitTogether(XC_LoadPackage.LoadPackageParam lpparam) {
+        // Block containerView.e3(Context, List, int) when i3==3
+        try {
+            XposedHelpers.findAndHookMethod(
+                    CONTAINER_VIEW, lpparam.classLoader, "e3",
+                    android.content.Context.class, List.class, Integer.TYPE,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            SplitBar502Compat.blockE3Entry(param);
+                        }
+                    });
+            PsCanvasLog.i("P0: hookBlockThreeSplitTogether e3 installed on ContainerView");
+        } catch (Throwable t) {
+            PsCanvasLog.e("P0: hookBlockThreeSplitTogether e3 failed", t);
+        }
+
+        // Block containerView.f3(List) — update resizable rects in three-split
+        try {
+            XposedHelpers.findAndHookMethod(
+                    CONTAINER_VIEW, lpparam.classLoader, "f3",
+                    List.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            SplitBar502Compat.blockF3(param);
+                        }
+                    });
+            PsCanvasLog.i("P0: hookBlockThreeSplitTogether f3 installed on ContainerView");
+        } catch (Throwable t) {
+            PsCanvasLog.e("P0: hookBlockThreeSplitTogether f3 failed", t);
+        }
+
+        // Block containerView.E2() — startScrollSplitBarInThreeSplit
+        try {
+            XposedHelpers.findAndHookMethod(
+                    CONTAINER_VIEW, lpparam.classLoader, "E2",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            SplitBar502Compat.blockE2Entry(param);
+                        }
+                    });
+            PsCanvasLog.i("P0: hookBlockThreeSplitTogether E2 installed on ContainerView");
+        } catch (Throwable t) {
+            PsCanvasLog.e("P0: hookBlockThreeSplitTogether E2 failed", t);
+        }
+
+        // Block containerView.i2(List, float, float, E.c) — enlarge for three-split
+        try {
+            Class<?> eClass = findClassFirst(lpparam.classLoader,
+                    "com.oplus.pscanvas.canvasmode.canvas.E");
+            if (eClass == null) {
+                PsCanvasLog.w("P0: i2 hook skipped, E class not found");
+                return;
+            }
+            Class<?> eInnerC = null;
+            for (Class<?> inner : eClass.getDeclaredClasses()) {
+                if (inner.getSimpleName().equals("c")) {
+                    eInnerC = inner;
+                    break;
+                }
+            }
+            if (eInnerC == null) {
+                PsCanvasLog.w("P0: i2 hook skipped, E.c inner class not found");
+            } else {
+                XposedHelpers.findAndHookMethod(
+                        CONTAINER_VIEW, lpparam.classLoader, "i2",
+                        List.class, Float.TYPE, Float.TYPE, eInnerC,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                SplitBar502Compat.blockI2(param);
+                            }
+                        });
+                PsCanvasLog.i("P0: hookBlockThreeSplitTogether i2 installed on ContainerView");
+            }
+        } catch (Throwable t) {
+            PsCanvasLog.e("P0: hookBlockThreeSplitTogether i2 failed", t);
+        }
+    }
+
+    // ============================================================
+    // P1: Block 700 SplitBar three-split drag
+    // ============================================================
+
+    /**
+     * P1 — Block 700 SplitBar three-split drag handlers.
+     * 502 uses direction-switch methods (C/D/E/F/G in C0328z)
+     * which were replaced by unified spring drag (E.u0) in 700.
+     * Block both u0() and its spring init R().
+     */
+    private static void hookBlockSplitBarThreeSplitDrag(XC_LoadPackage.LoadPackageParam lpparam) {
+        String E_CLASS = "com.oplus.pscanvas.canvasmode.canvas.E";
+
+        // Block E.u0(c, float, float, float, float) — three-split spring drag
+        try {
+            Class<?> eClass = findClassFirst(lpparam.classLoader, E_CLASS);
+            if (eClass == null) {
+                PsCanvasLog.w("P1: E.u0 hook skipped, E class not found");
+                return;
+            }
+            Class<?> eInnerC = null;
+            for (Class<?> inner : eClass.getDeclaredClasses()) {
+                if (inner.getSimpleName().equals("c")) {
+                    eInnerC = inner;
+                    break;
+                }
+            }
+            if (eInnerC != null) {
+                XposedHelpers.findAndHookMethod(eClass, "u0",
+                        eInnerC, Float.TYPE, Float.TYPE, Float.TYPE, Float.TYPE,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                SplitBar502Compat.blockEU0(param);
+                            }
+                        });
+                PsCanvasLog.i("P1: hookBlockSplitBarThreeSplitDrag u0 installed on E");
+            } else {
+                PsCanvasLog.w("P1: E.u0 hook skipped, E.c inner class not found");
+            }
+        } catch (Throwable t) {
+            PsCanvasLog.e("P1: hookBlockSplitBarThreeSplitDrag u0 failed", t);
+        }
+
+        // Block E.R() — spring animation initialization
+        try {
+            Class<?> eClass = findClassFirst(lpparam.classLoader, E_CLASS);
+            if (eClass != null) {
+                XposedHelpers.findAndHookMethod(eClass, "R",
+                        new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                SplitBar502Compat.blockER(param);
+                            }
+                        });
+                PsCanvasLog.i("P1: hookBlockSplitBarThreeSplitDrag R installed on E");
+            }
+        } catch (Throwable t) {
+            PsCanvasLog.e("P1: hookBlockSplitBarThreeSplitDrag R failed", t);
+        }
+    }
+
+    // ============================================================
+    // P2: Z-Order + getLaunchRect panorama fix
+    // ============================================================
+
+    /**
+     * P2 — Block three-split-together z-order branch.
+     * Hook B1.s.z(int, View) to always return false so
+     * ContainerView.setLayerOrder() takes the simple (502-compatible)
+     * branch instead of the 700 three-split-together sub-surface path.
+     */
+    private static void hookBlockThreeSplitZOrder(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            XposedHelpers.findAndHookMethod(CONFIG, lpparam.classLoader, "z",
+                    Integer.TYPE, android.view.View.class,
+                    new XC_MethodReplacement() {
+                        @Override
+                        protected Object replaceHookedMethod(MethodHookParam param) {
+                            return false;
+                        }
+                    });
+            PsCanvasLog.i("P2: hookBlockThreeSplitZOrder installed: B1.s.z() always false");
+        } catch (Throwable t) {
+            PsCanvasLog.e("P2: hookBlockThreeSplitZOrder B1.s.z failed", t);
+        }
+    }
+
+    /**
+     * P2 — Fix panorama getLaunchRect() override in EmbeddedViewDecor.
+     * 700 adds: if (B1.s.H() && item.B()) return item.i() (match-parent rect).
+     * 502 never does this — always return normal rect item.n() in panorama.
+     */
+    private static void hookFixPanoramaLaunchRect(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            String EMBEDDED_DECOR =
+                    "com.oplus.pscanvas.canvasmode.canvas.view.EmbeddedViewDecor";
+            XposedHelpers.findAndHookMethod(EMBEDDED_DECOR, lpparam.classLoader,
+                    "getLaunchRect",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            SplitBar502Compat.blockPanoramaLaunchRectOverride(param);
+                        }
+                    });
+            PsCanvasLog.i("P2: hookFixPanoramaLaunchRect installed on EmbeddedViewDecor.getLaunchRect");
+        } catch (Throwable t) {
+            PsCanvasLog.e("P2: hookFixPanoramaLaunchRect failed", t);
+        }
     }
 }
