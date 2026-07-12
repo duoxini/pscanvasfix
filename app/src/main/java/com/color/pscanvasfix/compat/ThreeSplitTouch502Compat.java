@@ -62,7 +62,7 @@ public final class ThreeSplitTouch502Compat {
     }
 
     public static boolean shouldBlockTouchAnim(Object animOrDragHolder) {
-        return isPanoramaThreeSplit(findContainerView(animOrDragHolder));
+        return isAnyPanoramaMode(findContainerView(animOrDragHolder));
     }
 
     public static Object findContainerView(Object holder) {
@@ -337,5 +337,38 @@ public final class ThreeSplitTouch502Compat {
         } catch (Throwable throwable) {
             PsCanvasLog.e("focusIndexOnly failed index=" + index, throwable);
         }
+    }
+
+    /**
+     * Check if the current adapter orientation is portrait (vertical) panorama.
+     * 502 portrait layout: adapter.i() returns the portrait task count,
+     * adapter.n() returns layout orientation (4-7 for panorama).
+     *
+     * In portrait mode: all three apps are stacked vertically with the
+     * top two fully visible and the bottom one peeking (or vice versa).
+     */
+    public static boolean isPortraitPanorama(Object containerView) {
+        if (containerView == null || !isThreeAppCanvas(containerView)) {
+            return false;
+        }
+        try {
+            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            if (adapter == null) return false;
+            int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
+            int portraitCount = (Integer) XposedHelpers.callMethod(adapter, "i");
+            // Portrait panorama: layout >= 4 (panorama range) with portrait tasks
+            return layout >= 4 && layout <= 7 && portraitCount >= 1;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Check if we're in any panorama mode (landscape or portrait).
+     * Orientation-agnostic version used by hooks that need to apply
+     * 502 behavior regardless of device orientation.
+     */
+    public static boolean isAnyPanoramaMode(Object containerView) {
+        return isPanoramaThreeSplit(containerView) || isPortraitPanorama(containerView);
     }
 }
