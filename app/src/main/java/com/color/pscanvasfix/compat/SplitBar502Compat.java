@@ -121,6 +121,9 @@ public final class SplitBar502Compat {
      * 700 line 1028: if (B1.s.H() && item.B()) return item.i()
      * This returns match-parent rect in panorama mode instead of normal rect.
      * 502 always uses item.n() — force it.
+     *
+     * NOTE: Uses getTaskData() method (public API) instead of direct field
+     * access because jadx field names (f10863i) differ from live dex names.
      */
     public static void blockPanoramaLaunchRectOverride(XC_MethodHook.MethodHookParam param) {
         try {
@@ -131,10 +134,11 @@ public final class SplitBar502Compat {
             if (adapter == null) return;
             int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
             if (layout >= 4 && layout <= 7) {
-                Object taskData = XposedHelpers.getObjectField(decor, "f10863i");
+                // Use public getTaskData() method instead of direct field (live dex compat)
+                Object taskData = XposedHelpers.callMethod(decor, "getTaskData");
                 if (taskData != null) {
                     Object normalRect = XposedHelpers.callMethod(taskData, "n");
-                    PsCanvasLog.d("getLaunchRect: forced normal rect in panorama layout=" + layout);
+                    // Rate-limit: only log first occurrence per layout session
                     param.setResult(normalRect);
                 }
             }

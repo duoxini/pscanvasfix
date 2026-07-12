@@ -86,7 +86,12 @@ public final class PsCanvasHooks {
         hookWindowConfigUtils(lpparam);
         hookActivityTaskManagerCallers(lpparam);
         hookDirectWindowConfigurationAccess(lpparam);
-        installDeferredHooksOnContainerStart(lpparam);
+        // --- Deferred hooks: install immediately (not via onCreate callback) ---
+        // The ContainerActivity.onCreate hook gets overwritten by
+        // hookWithConfigFallback's XC_MethodReplacement, preventing the
+        // afterHookedMethod from firing. Install gesture hooks directly.
+        hook502BehaviorRestoreDeferred(lpparam);
+        hookTwoColumnPanoramaRestoreDeferred(lpparam);
         // --- P0: Block 700 three-split-together callback chain ---
         hookBlockThreeSplitTogether(lpparam);
         // --- P1: Block 700 SplitBar three-split drag ---
@@ -859,6 +864,10 @@ public final class PsCanvasHooks {
                 if (!ThreeSplitTouch502Compat.isThreeAppCanvas(containerView)) {
                     return;
                 }
+                // When canvas sync pinch is disabled, let x1.r path handle the scale normally
+                if (!ThreeSplitTouch502Compat.shouldUseCanvasSyncPinch(containerView)) {
+                    return;
+                }
                 Object splitPolicy = ObfFieldCompat.getObject(outer,
                         ObfFieldCompat.GESTURE_SPLIT_POLICY, "f10948c");
                 if (Boolean.TRUE.equals(param.getResult()) && splitPolicy != null) {
@@ -886,6 +895,11 @@ public final class PsCanvasHooks {
                 if (outer == null) {
                     return;
                 }
+                Object containerView = ThreeSplitTouch502Compat.getGestureContainerView(outer);
+                // Only interfere when canvas sync pinch is enabled
+                if (!ThreeSplitTouch502Compat.shouldUseCanvasSyncPinch(containerView)) {
+                    return;
+                }
                 ThreeSplitTouch502Compat.prepareThreeAppCanvasPinch(outer, gestureClass);
                 int pointerCount = ObfFieldCompat.getInt(outer,
                         ObfFieldCompat.GESTURE_POINTER_COUNT, "f10935A");
@@ -900,6 +914,10 @@ public final class PsCanvasHooks {
             protected void afterHookedMethod(MethodHookParam param) {
                 Object outer = XposedHelpers.getObjectField(param.thisObject, "this$0");
                 if (outer != null) {
+                    Object containerView = ThreeSplitTouch502Compat.getGestureContainerView(outer);
+                    if (!ThreeSplitTouch502Compat.shouldUseCanvasSyncPinch(containerView)) {
+                        return;
+                    }
                     ThreeSplitTouch502Compat.resetThreeAppPinchState(outer, gestureClass);
                 }
             }
@@ -1491,8 +1509,13 @@ public final class PsCanvasHooks {
      * Hook B1.s.z(int, View) to always return false so
      * ContainerView.setLayerOrder() takes the simple (502-compatible)
      * branch instead of the 700 three-split-together sub-surface path.
+     *
+     * The live dex may use different parameter types than the decompiled
+     * APK — try multiple signatures to find the right one.
      */
     private static void hookBlockThreeSplitZOrder(XC_LoadPackage.LoadPackageParam lpparam) {
+        boolean hooked = false;
+        // Try exact signature from decompiled APK: z(int, View)
         try {
             XposedHelpers.findAndHookMethod(CONFIG, lpparam.classLoader, "z",
                     Integer.TYPE, android.view.View.class,
@@ -1502,9 +1525,32 @@ public final class PsCanvasHooks {
                             return false;
                         }
                     });
-            PsCanvasLog.i("P2: hookBlockThreeSplitZOrder installed: B1.s.z() always false");
+            hooked = true;
+            PsCanvasLog.i("P2: hookBlockThreeSplitZOrder installed via z(int, View)");
         } catch (Throwable t) {
-            PsCanvasLog.e("P2: hookBlockThreeSplitZOrder B1.s.z failed", t);
+            PsCanvasLog.d("P2: B1.s.z(int, View) not found, trying alternatives");
+        }
+
+        // Try: z(int, Object) — live dex may erase generics
+        if (!hooked) {
+            try {
+                XposedHelpers.findAndHookMethod(CONFIG, lpparam.classLoader, "z",
+                        Integer.TYPE, Object.class,
+                        new XC_MethodReplacement() {
+                            @Override
+                            protected Object replaceHookedMethod(MethodHookParam param) {
+                                return false;
+                            }
+                        });
+                hooked = true;
+                PsCanvasLog.i("P2: hookBlockThreeSplitZOrder installed via z(int, Object)");
+            } catch (Throwable t) {
+                PsCanvasLog.d("P2: B1.s.z(int, Object) not found either");
+            }
+        }
+
+        if (!hooked) {
+            PsCanvasLog.w("P2: hookBlockThreeSplitZOrder — B1.s.z not found on this device, skipping");
         }
     }
 
