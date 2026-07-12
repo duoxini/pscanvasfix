@@ -9,20 +9,45 @@ if (-not (Test-Path $LogPath)) {
 }
 
 $mustHave = @(
-    "install v41",
+    "install v49",
     "hookPanoramaMaskAnimRectFix installed",
     "hookThreeSplitAnimResetGuard installed",
     "502 dummy prepare t0",
     "502 layout remap layout=4",
     "positionChangeToSplit onAnimationEnd result:true",
-    "502-style finish"
+    "502-style finish",
+    # P0: three-split-together blocking
+    "P0: hookBlockThreeSplitTogether e3 installed",
+    "blocked e3 three-split-together entry",
+    "P0: hookBlockThreeSplitTogether f3 installed",
+    "blocked f3",
+    "P0: hookBlockThreeSplitTogether E2 installed",
+    "blocked E2 startScrollSplitBarInThreeSplit",
+    # P1: SplitBar drag blocking
+    "P1: hookBlockSplitBarThreeSplitDrag u0 installed",
+    "blocked E.u0 three-split spring drag",
+    "P1: hookBlockSplitBarThreeSplitDrag R installed",
+    "blocked E.R spring animation init",
+    # P2: Z-Order + getLaunchRect
+    "P2: hookBlockThreeSplitZOrder installed",
+    "P2: hookFixPanoramaLaunchRect installed",
+    "getLaunchRect: forced normal rect in panorama",
+    # P3: adapter callback block
+    "f() beforeHook: nulled three-split callback"
 )
 
 $mustNotHave = @(
     "ensureCanvasLayout3ForTransition",
     "M1 clamped layoutOrientation 4 -> 3",
     "notifyPrepare.*toggle returned false",
-    "hookPanoramaMaskAnimRectFix failed"
+    "hookPanoramaMaskAnimRectFix failed",
+    # P0: three-split-together must not appear
+    "onEnterThreeSplitTogether",
+    "onExitThreeSplitTogether",
+    # P1: spring drag must not appear
+    "SpringAnimation.*start",
+    # P2: unblocked setLayerOrder sub-surface
+    "setLayerOrder.*sub.*surface"
 )
 
 Write-Host "=== Baseline acceptance: $LogPath ===" -ForegroundColor Cyan
