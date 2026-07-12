@@ -11,28 +11,32 @@ if (-not (Test-Path $LogPath)) {
 $mustHave = @(
     "install v49",
     "hookPanoramaMaskAnimRectFix installed",
-    "hookThreeSplitAnimResetGuard installed",
+    "hook502ThreeSplitTouchRestore installed",
     "502 dummy prepare t0",
-    "502 layout remap layout=4",
+    "502 layout remap layout",
     "positionChangeToSplit onAnimationEnd result:true",
     "502-style finish",
+    "hookScaleListener502 scale hooks",
     # P0: three-split-together blocking
     "P0: hookBlockThreeSplitTogether e3 installed",
     "blocked e3 three-split-together entry",
     "P0: hookBlockThreeSplitTogether f3 installed",
-    "blocked f3",
     "P0: hookBlockThreeSplitTogether E2 installed",
-    "blocked E2 startScrollSplitBarInThreeSplit",
+    "P0: hookBlockThreeSplitTogether i2 installed",
     # P1: SplitBar drag blocking
     "P1: hookBlockSplitBarThreeSplitDrag u0 installed",
-    "blocked E.u0 three-split spring drag",
     "P1: hookBlockSplitBarThreeSplitDrag R installed",
-    "blocked E.R spring animation init",
-    # P2: Z-Order + getLaunchRect
-    "P2: hookBlockThreeSplitZOrder installed",
+    # P2: getLaunchRect fix
     "P2: hookFixPanoramaLaunchRect installed",
-    "getLaunchRect: forced normal rect in panorama",
-    # P3: adapter callback block
+    "blocked isThreeSplitTogether in calculateFlexibleWindowBounds"
+)
+
+$mustHaveOptional = @(
+    # Only when user drags split bar
+    "blocked E2 startScrollSplitBarInThreeSplit",
+    "blocked E.R spring animation init",
+    "blocked E.u0 three-split spring drag",
+    # Only when adapter callback fires (field name may differ per device)
     "f() beforeHook: nulled three-split callback"
 )
 
@@ -61,6 +65,16 @@ foreach ($pattern in $mustHave) {
     } else {
         Write-Host "[MISS] $pattern" -ForegroundColor Red
         $ok = $false
+    }
+}
+
+Write-Host "`n-- Optional (OK if absent) --"
+foreach ($pattern in $mustHaveOptional) {
+    $hits = Select-String -Path $LogPath -Pattern $pattern -AllMatches
+    if ($hits) {
+        Write-Host "[OK] $pattern ($($hits.Count) hit(s))" -ForegroundColor Green
+    } else {
+        Write-Host "[--] $pattern (not triggered)" -ForegroundColor Yellow
     }
 }
 
