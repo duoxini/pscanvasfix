@@ -36,9 +36,15 @@ public final class ThreeSplitTouch502Compat {
         return false;
     }
 
-    /** 502: five-finger pinch in 3-app canvas sync-shrinks on canvas (not split-to-flexible). */
+    /**
+     * 502: five-finger pinch in 3-app canvas sync-shrinks on canvas (not split-to-flexible).
+     * NOTE: Canvas sync pinch requires re-wiring ScaleGestureDetector to ContainerView
+     * which is not feasible via Xposed hooks alone. Return false to allow the normal
+     * split-to-flexible path to handle pinch → floating windows.
+     * The adapter layout remap (3→4) ensures correct panorama 2+1 visual display.
+     */
     public static boolean shouldUseCanvasSyncPinch(Object containerView) {
-        return isThreeAppCanvas(containerView);
+        return false;
     }
 
     /** True when 3-app canvas uses panorama layout and pinch transition is not active. */
@@ -185,6 +191,10 @@ public final class ThreeSplitTouch502Compat {
         if (gestureOuter == null || gestureClass == null) {
             return false;
         }
+        // Only block when canvas sync pinch is enabled
+        if (!shouldUseCanvasSyncPinch(null)) {
+            return false;
+        }
         Object containerView = getGestureContainerView(gestureOuter);
         if (!isThreeAppCanvas(containerView)) {
             return false;
@@ -214,6 +224,10 @@ public final class ThreeSplitTouch502Compat {
         if (gestureOuter == null || gestureClass == null || pointerCount <= 3) {
             return false;
         }
+        // Only block x1.r path when canvas sync pinch is enabled
+        if (!shouldUseCanvasSyncPinch(null)) {
+            return false;
+        }
         Object containerView = getGestureContainerView(gestureOuter);
         if (!isThreeAppCanvas(containerView)) {
             return false;
@@ -235,6 +249,10 @@ public final class ThreeSplitTouch502Compat {
     /** Undo x1.r path if onScaleBegin already committed flexible branch. */
     public static void undoFlexiblePinchBegin(Object gestureOuter, Class<?> gestureClass) {
         if (gestureOuter == null || gestureClass == null) {
+            return;
+        }
+        // Only undo when canvas sync pinch is enabled
+        if (!shouldUseCanvasSyncPinch(null)) {
             return;
         }
         Object containerView = getGestureContainerView(gestureOuter);
@@ -312,7 +330,8 @@ public final class ThreeSplitTouch502Compat {
             if (!Boolean.TRUE.equals(XposedHelpers.callMethod(containerView, "G1", index))) {
                 return false;
             }
-            Object panoramaManager = XposedHelpers.getObjectField(containerView, "f10736I");
+            // Find panorama manager via field scan (live dex field names differ from jadx)
+            Object panoramaManager = findPanoramaManager(containerView);
             if (panoramaManager == null
                     || !Boolean.TRUE.equals(XposedHelpers.callMethod(panoramaManager, "M"))) {
                 return false;
@@ -323,6 +342,31 @@ public final class ThreeSplitTouch502Compat {
             PsCanvasLog.e("redirectGestureFocusToPan failed index=" + index, throwable);
             return false;
         }
+    }
+
+    /** Scan ContainerView for panorama mode manager field (live dex compat). */
+    private static Object findPanoramaManager(Object containerView) {
+        if (containerView == null) return null;
+        // Try known field names first
+        for (String name : new String[]{"I", "f10736I", "H"}) {
+            try {
+                Object val = XposedHelpers.getObjectField(containerView, name);
+                if (val != null && val.getClass().getName().contains("A0")) {
+                    return val;
+                }
+            } catch (Throwable ignored) {}
+        }
+        // Scan all fields for panorama manager type
+        for (java.lang.reflect.Field f : containerView.getClass().getDeclaredFields()) {
+            if (f.getType().getName().contains("A0") || f.getType().getSimpleName().equals("A0")) {
+                try {
+                    f.setAccessible(true);
+                    Object val = f.get(containerView);
+                    if (val != null) return val;
+                } catch (Throwable ignored) {}
+            }
+        }
+        return null;
     }
 
     public static void focusIndexOnly(Object containerView, int index) {
