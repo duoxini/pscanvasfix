@@ -107,10 +107,10 @@ public final class PinchTransition502Compat {
                 }
                 return;
             }
-            if (layout == 6) {
-                applyLaunchInfo(splitPolicy, masks, entries, boundsList, 0, 1);
+            if (layout == 4) {
+                applyLaunchInfo(splitPolicy, masks, entries, boundsList, 0, 0);
                 applyLaunchInfo(splitPolicy, masks, entries, boundsList, 1, 2);
-                applyLaunchInfo(splitPolicy, masks, entries, boundsList, 2, 0);
+                applyLaunchInfo(splitPolicy, masks, entries, boundsList, 2, 1);
                 return;
             }
             if (layout == 5) {
@@ -119,10 +119,10 @@ public final class PinchTransition502Compat {
                 applyLaunchInfo(splitPolicy, masks, entries, boundsList, 2, 2);
                 return;
             }
-            if (layout == 4) {
-                applyLaunchInfo(splitPolicy, masks, entries, boundsList, 0, 0);
+            if (layout == 6) {
+                applyLaunchInfo(splitPolicy, masks, entries, boundsList, 0, 1);
                 applyLaunchInfo(splitPolicy, masks, entries, boundsList, 1, 2);
-                applyLaunchInfo(splitPolicy, masks, entries, boundsList, 2, 1);
+                applyLaunchInfo(splitPolicy, masks, entries, boundsList, 2, 0);
                 return;
             }
             int last = size - 1;

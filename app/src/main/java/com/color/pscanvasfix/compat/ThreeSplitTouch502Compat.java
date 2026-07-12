@@ -315,8 +315,9 @@ public final class ThreeSplitTouch502Compat {
     }
 
     /**
-     * 700 handleUp uses adapter.H only when panorama M() is true and G1(index).
-     * 502 still pans peek slots into view via ContainerView.V(index, 1).
+     * Block adapter.H(index) in panorama 3-split to prevent 700 tap-to-enlarge.
+     * 502 does NOT auto-enlarge on single tap in panorama — only 4-finger pinch
+     * out triggers exit/transition. Simply block the focus call entirely.
      */
     public static boolean redirectGestureFocusToPan(Object adapter, int index) {
         if (!isGestureManagerFocusSwitch()) {
@@ -330,14 +331,10 @@ public final class ThreeSplitTouch502Compat {
             if (!Boolean.TRUE.equals(XposedHelpers.callMethod(containerView, "G1", index))) {
                 return false;
             }
-            // Find panorama manager via field scan (live dex field names differ from jadx)
-            Object panoramaManager = findPanoramaManager(containerView);
-            if (panoramaManager == null
-                    || !Boolean.TRUE.equals(XposedHelpers.callMethod(panoramaManager, "M"))) {
-                return false;
-            }
-            PsCanvasLog.d("redirect gesture focus to pan index=" + index);
-            return focusWithPan(containerView, index);
+            // 502: single tap in panorama does NOT auto-enlarge.
+            // Block adapter.H(index) entirely — no pan, no enlarge.
+            PsCanvasLog.d("blocked tap-to-enlarge in panorama index=" + index);
+            return true; // true = BLOCK the original adapter.H(index)
         } catch (Throwable throwable) {
             PsCanvasLog.e("redirectGestureFocusToPan failed index=" + index, throwable);
             return false;

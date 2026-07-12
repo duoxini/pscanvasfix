@@ -689,7 +689,10 @@ public final class PsCanvasHooks {
         try {
             int count = (Integer) XposedHelpers.callMethod(adapter, "getCount");
             if (count == 3) {
-                return 4;
+                // Layout 3 = three side-by-side (700 three-split-together).
+                // e3(i3=3) callback is blocked separately to prevent equal-column
+                // setup; panorama mode (F0=true) provides wide canvas for peek.
+                return 3;
             }
         } catch (Throwable ignored) {
         }
@@ -752,8 +755,9 @@ public final class PsCanvasHooks {
                         int count = (Integer) XposedHelpers.callMethod(adapter, "getCount");
                         int layout = (Integer) param.getResult();
                         if (count == 3 && layout == 3) {
-                            param.setResult(4);
-                            XposedBridge.log(TAG + ": B1.e.c() remapped layout 3 -> 4");
+                            // Keep layout 3 — panorama mode (F0=true) handles peek effect
+                            // e3(i3=3) callback is blocked separately
+                            XposedBridge.log(TAG + ": B1.e.c() layout 3 kept (e3 blocked)");
                         }
                     });
         } catch (Throwable throwable) {
@@ -768,8 +772,9 @@ public final class PsCanvasHooks {
         }
         int layout = ObfFieldCompat.getInt(adapter, ObfFieldCompat.ADAPTER_LAYOUT, "f13788f");
         if (layout == 3) {
-            ObfFieldCompat.setInt(adapter, ObfFieldCompat.ADAPTER_LAYOUT, "f13788f", 4);
-            XposedBridge.log(TAG + ": " + source + " forced layout 3 -> 4");
+            // Keep layout 3 — e3 callback blocks equal-column setup,
+            // panorama F0=true handles wide canvas for peek effect
+            XposedBridge.log(TAG + ": " + source + " layout 3 kept (panorama peek)");
         }
         if (gestureManagerClass != null) {
             try {
