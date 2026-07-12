@@ -4,7 +4,7 @@
 
 > 设备上 `/system_ext/app/OplusFlexibleWindowUI/OplusFlexibleWindowUI.apk` 与 `com.oplus.pscanvas` **是同一个 APK**（哈希一致）。模块作用域仍选 `com.oplus.pscanvas`。
 
-当前模块版本：**v49**（`versionCode 49`）。详细 502 vs 700 对照见 [`docs/502-700-diff-baseline.md`](docs/502-700-diff-baseline.md)。
+当前模块版本：**v1.0**（`versionCode 1`）。详细 502 vs 700 对照见 [`docs/502-700-diff-baseline.md`](docs/502-700-diff-baseline.md)。
 
 ## 反编译对比结论
 

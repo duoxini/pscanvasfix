@@ -72,8 +72,8 @@ public final class PsCanvasHooks {
             return;
         }
         XposedBridge.log(TAG + ": hooking " + lpparam.packageName
-                + " v49 (502 full replication: P0-P3)");
-        PsCanvasLog.i("install v49 hooks for " + lpparam.packageName);
+                + " v1.0 (502 full replication)");
+        PsCanvasLog.i("install v1.0 hooks for " + lpparam.packageName);
 
         // --- PinchTransitionHooks (502 S1.p core) ---
         hook502SplitToFlexibleRestore(lpparam);

@@ -9,7 +9,7 @@ if (-not (Test-Path $LogPath)) {
 }
 
 $mustHave = @(
-    "install v49",
+    "install v1.0",
     "hookPanoramaMaskAnimRectFix installed",
     "hook502ThreeSplitTouchRestore installed",
     "502 dummy prepare t0",
