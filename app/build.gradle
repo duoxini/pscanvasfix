@@ -10,8 +10,8 @@ android {
         applicationId 'com.color.pscanvasfix'
         minSdk 33
         targetSdk 35
-        versionCode 49
-        versionName '12.0.14-700-v49'
+        versionCode 1
+        versionName '1.0'
     }
 
     buildTypes {
