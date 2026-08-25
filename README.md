@@ -10,4 +10,4 @@
 - 组件版本：`versionCode 20` / `versionName 2.0.0`
 - APK SHA-256：`1cbf75ee66565ba4eb2e78c360243bc97d7e13379595f94914af5b25c7a77fe3`
 
-其他 APK 版本不会加载兼容 Hook。后续版本的适配结论见 [260608 适配复盘与后续适配指南](docs/260608-adaptation-guide.md)。
+其他 APK 版本不会加载兼容 Hook。
