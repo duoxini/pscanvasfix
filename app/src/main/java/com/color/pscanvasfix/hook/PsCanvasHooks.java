@@ -17,6 +17,7 @@ import com.color.pscanvasfix.compat.ConfigCompat;
 import com.color.pscanvasfix.compat.FlexibleTransitionCompat;
 import com.color.pscanvasfix.compat.I0Compat;
 import com.color.pscanvasfix.compat.ObfFieldCompat;
+import com.color.pscanvasfix.compat.PanoramaModeCompat;
 import com.color.pscanvasfix.compat.PinchTransition502Compat;
 import com.color.pscanvasfix.compat.PsCanvasLog;
 import com.color.pscanvasfix.compat.SplitBar502Compat;
@@ -38,7 +39,8 @@ public final class PsCanvasHooks {
     private static final String TAG = "PsCanvasFix";
     private static final String TARGET_PACKAGE = "com.oplus.pscanvas";
 
-    // 700 obfuscated class names
+    // Legacy 260403 symbols. They remain only in unused legacy helpers; the
+    // active 260608 installation path is selected through the APK profile.
     private static final String UTIL = "B1.l";
     private static final String CONFIG = "B1.s";
     private static final String SSTO_FLEX = "x1.r";
@@ -66,40 +68,236 @@ public final class PsCanvasHooks {
     }
 
     private static volatile boolean deferredHooksInstalled = false;
+    private static volatile boolean equalWidthCanvasLogged = false;
+    private static volatile PsCanvasCompatibilityProfile activeProfile;
+    private static final ThreadLocal<Boolean> allowDirectionalPanoramaExit =
+            new ThreadLocal<>();
 
     public static void install(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!TARGET_PACKAGE.equals(lpparam.packageName)) {
             return;
         }
+        String apkPath = lpparam.appInfo == null ? null : lpparam.appInfo.sourceDir;
+        String sha256 = ApkFingerprint.sha256(apkPath);
+        PsCanvasCompatibilityProfile profile = PsCanvasCompatibilityProfile.find(sha256);
+        if (profile == null) {
+            XposedBridge.log(TAG + ": unsupported profile sha256=" + sha256 + " apk=" + apkPath);
+            return;
+        }
+        activeProfile = profile;
         XposedBridge.log(TAG + ": hooking " + lpparam.packageName
-                + " v1.0 (502 full replication)");
-        PsCanvasLog.i("install v1.0 hooks for " + lpparam.packageName);
+                + " profile=" + profile.id());
+        PsCanvasLog.i("install profile=" + profile.id() + " sha256=" + sha256);
 
-        // --- PinchTransitionHooks (502 S1.p core) ---
-        hook502SplitToFlexibleRestore(lpparam);
-        hookSplitToFlexibleTransition(lpparam);
-        hook502ThreeSplitTouchRestore(lpparam);
-        // --- PanoramaHooks (502 split display, do not touch during pinch) ---
-        hook502BehaviorRestoreCore(lpparam);
-        hookTwoColumnPanoramaRestoreCore(lpparam);
-        // --- Shared infra ---
-        hookWindowConfigUtils(lpparam);
-        hookActivityTaskManagerCallers(lpparam);
-        hookDirectWindowConfigurationAccess(lpparam);
-        // --- Deferred hooks: install immediately (not via onCreate callback) ---
-        // The ContainerActivity.onCreate hook gets overwritten by
-        // hookWithConfigFallback's XC_MethodReplacement, preventing the
-        // afterHookedMethod from firing. Install gesture hooks directly.
-        hook502BehaviorRestoreDeferred(lpparam);
-        hookTwoColumnPanoramaRestoreDeferred(lpparam);
-        // --- P0: Block 700 three-split-together callback chain ---
+        hook260608VerifiedSstoFlexible(lpparam, profile);
+        hook260608ThreeSplitTouchRestore(lpparam, profile);
+        hook260608CanvasController(lpparam, profile);
+        hook260608BlockPanoramaTapExit(lpparam);
+        hook260608ThreeSplitBoundsRequest(lpparam);
+        hook260608EqualWidthCanvas(lpparam);
         hookBlockThreeSplitTogether(lpparam);
-        // --- P1: Block 700 SplitBar three-split drag ---
         hookBlockSplitBarThreeSplitDrag(lpparam);
-        // --- P2: Z-Order + getLaunchRect panorama fix ---
-        hookBlockThreeSplitZOrder(lpparam);
-        hookFixPanoramaLaunchRect(lpparam);
-        XposedBridge.log(TAG + ": critical hooks installed");
+        PsCanvasLog.i("profile=" + profile.id() + " hooks summary: verified groups installed; "
+                + "unverified SStoFlexible short-name hooks skipped");
+    }
+
+    /** Keep a normal single tap from exiting the full panorama overview. */
+    private static void hook260608BlockPanoramaTapExit(
+            XC_LoadPackage.LoadPackageParam lpparam) {
+        Class<?> managerClass = findClassFirst(lpparam.classLoader,
+                "com.oplus.pscanvas.canvasmode.canvas.B0",
+                "com.oplus.pscanvas.canvasmode.canvas.A0");
+        if (managerClass == null) {
+            PsCanvasLog.w("260608 panorama manager class missing for tap-exit hook");
+            return;
+        }
+        try {
+            XposedHelpers.findAndHookMethod(managerClass, "A", Boolean.TYPE,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!Boolean.TRUE.equals(allowDirectionalPanoramaExit.get())
+                                    && isCanvasGestureManagerCall()) {
+                                param.setResult(null);
+                                PsCanvasLog.i("260608 blocked single-tap panorama exit");
+                            }
+                        }
+                    });
+            PsCanvasLog.i("260608 panorama single-tap exit hook installed on "
+                    + managerClass.getName());
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 panorama single-tap exit hook failed", throwable);
+        }
+    }
+
+    private static boolean isCanvasGestureManagerCall() {
+        StackTraceElement[] trace = Thread.currentThread().getStackTrace();
+        for (int index = 0; index < Math.min(trace.length, 24); index++) {
+            String className = trace[index].getClassName();
+            if ((className.endsWith(".canvas.y")
+                    || className.endsWith(".canvas.C0332y"))
+                    && "T".equals(trace[index].getMethodName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 700 adds isThreeSplitTogether to the three-intent bounds request. That makes
+     * system_server allocate three 1113px tasks even when the canvas displays the
+     * 502-style 1600px columns, producing black side bars. 502 sends the same
+     * request without this flag.
+     */
+    private static void hook260608ThreeSplitBoundsRequest(
+            XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            XposedHelpers.findAndHookMethod(UTIL, lpparam.classLoader, "o",
+                    Intent.class, Integer.TYPE, Integer.TYPE,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            Intent intent = (Intent) param.args[0];
+                            if (intent != null && intent.getBooleanExtra(
+                                    "isThreeSplitTogether", false)) {
+                                intent.removeExtra("isThreeSplitTogether");
+                                PsCanvasLog.i("260608 B1.l.o: removed 700 "
+                                        + "isThreeSplitTogether from single-task request");
+                            }
+                        }
+                    });
+            PsCanvasLog.i("260608 B1.l.o 502 single-task bounds installed");
+        } catch (Throwable t) {
+            PsCanvasLog.e("260608 B1.l.o single-task bounds install failed", t);
+        }
+
+        try {
+            XposedHelpers.findAndHookMethod(UTIL, lpparam.classLoader, "n",
+                    List.class, Integer.TYPE, Bundle.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!(param.args[0] instanceof List)
+                                    || ((List<?>) param.args[0]).size() != 3
+                                    || !Integer.valueOf(3).equals(param.args[1])
+                                    || !(param.args[2] instanceof Bundle)) {
+                                return;
+                            }
+                            Bundle request = (Bundle) param.args[2];
+                            if (!request.getBoolean("isThreeSplitTogether", false)) {
+                                return;
+                            }
+                            Bundle restored502Request = new Bundle(request);
+                            restored502Request.remove("isThreeSplitTogether");
+                            param.args[2] = restored502Request;
+                            param.setObjectExtra("pscanvasfix_502_bounds", Boolean.TRUE);
+                            PsCanvasLog.i("260608 B1.l.n: removed 700 "
+                                    + "isThreeSplitTogether bounds flag");
+                        }
+
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (!Boolean.TRUE.equals(param.getObjectExtra(
+                                    "pscanvasfix_502_bounds"))
+                                    || !(param.getResult() instanceof Bundle)) {
+                                return;
+                            }
+                            Bundle result = (Bundle) param.getResult();
+                            ArrayList<Bundle> taskBundles = result.getParcelableArrayList(
+                                    "androidx.flexible.layout.info.list", Bundle.class);
+                            if (taskBundles == null || taskBundles.size() != 3) {
+                                return;
+                            }
+                            ArrayList<Bundle> restoredTaskBundles = new ArrayList<>(3);
+                            for (Bundle taskBundle : taskBundles) {
+                                Bundle restoredTask = new Bundle(taskBundle);
+                                Rect launchBounds = restoredTask.getParcelable(
+                                        "androidx.flexible.LaunchBounds", Rect.class);
+                                if (launchBounds != null && launchBounds.height() > 0) {
+                                    int width = PanoramaModeCompat.equalColumnWidth(
+                                            launchBounds.height());
+                                    Rect restoredBounds = new Rect(launchBounds.left,
+                                            launchBounds.top, launchBounds.left + width,
+                                            launchBounds.bottom);
+                                    restoredTask.putParcelable(
+                                            "androidx.flexible.LaunchBounds", restoredBounds);
+                                    restoredTask.putParcelable(
+                                            "androidx.flexible.LaunchHorizontalBounds",
+                                            new Rect(restoredBounds));
+                                }
+                                restoredTaskBundles.add(restoredTask);
+                            }
+                            result.putParcelableArrayList(
+                                    "androidx.flexible.layout.info.list", restoredTaskBundles);
+                            param.setResult(result);
+                            PsCanvasLog.i("260608 B1.l.n: synchronized task launch bounds "
+                                    + "to 502 column width");
+                        }
+                    });
+            PsCanvasLog.i("260608 B1.l.n 502 bounds request installed");
+        } catch (Throwable t) {
+            PsCanvasLog.e("260608 B1.l.n bounds request install failed", t);
+        }
+    }
+
+    /** Restore the 502 first-open canvas: two portrait columns plus a right-side peek. */
+    private static void hook260608EqualWidthCanvas(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            XposedHelpers.findAndHookMethod(UTIL, lpparam.classLoader, "M1",
+                    List.class, Integer.TYPE, Float.TYPE,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            Object rawResult = param.getResult();
+                            if (!(rawResult instanceof List)
+                                    || !(param.args[0] instanceof List)
+                                    || ((List<?>) param.args[0]).size() != 3
+                                    || !Integer.valueOf(3).equals(param.args[1])) {
+                                return;
+                            }
+                            try {
+                                List<?> original = (List<?>) rawResult;
+                                if (original.size() != 3) {
+                                    return;
+                                }
+                                int top = Integer.MAX_VALUE;
+                                int height = 0;
+                                for (Object item : original) {
+                                    if (!(item instanceof Rect)) {
+                                        return;
+                                    }
+                                    Rect rect = (Rect) item;
+                                    top = Math.min(top, rect.top);
+                                    height = Math.max(height, rect.height());
+                                }
+                                if (height <= 0 || top == Integer.MAX_VALUE) {
+                                    return;
+                                }
+                                float density = ((Number) param.args[2]).floatValue();
+                                int gap = Math.max(1, Math.round(density * 10.0f));
+                                int width = PanoramaModeCompat.equalColumnWidth(height);
+                                ArrayList<Rect> restored = new ArrayList<>(3);
+                                int left = 0;
+                                for (int index = 0; index < 3; index++) {
+                                    restored.add(new Rect(left, top, left + width, top + height));
+                                    left += width + gap;
+                                }
+                                param.setResult(restored);
+                                if (!equalWidthCanvasLogged) {
+                                    equalWidthCanvasLogged = true;
+                                    PsCanvasLog.i("260608 B1.l.M1: restored 502 wide canvas "
+                                            + "width=" + width + " height=" + height
+                                            + " gap=" + gap + " rects=" + restored);
+                                }
+                            } catch (Throwable t) {
+                                PsCanvasLog.e("260608 equal-width canvas callback failed", t);
+                            }
+                        }
+                    });
+            PsCanvasLog.i("260608 B1.l.M1 502 wide canvas installed");
+        } catch (Throwable t) {
+            PsCanvasLog.e("260608 B1.l.M1 wide canvas install failed", t);
+        }
     }
 
     private static void installDeferredHooksOnContainerStart(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -144,6 +342,280 @@ public final class PsCanvasHooks {
             }
         }
         return null;
+    }
+
+    /** Install only SStoFlexible methods whose 260608 DEX signatures are verified. */
+    private static void hook260608VerifiedSstoFlexible(XC_LoadPackage.LoadPackageParam lpparam,
+                                                        PsCanvasCompatibilityProfile profile) {
+        String target = profile.sstoFlexibleClass();
+        // These no-argument methods are verified from the 260608 DEX by their
+        // distinctive transition strings.  They only provide runtime evidence
+        // for the next mapping step; they do not alter the OEM transition.
+        hookBeforeMethod(lpparam, target, "Q", new Class[0],
+                param -> PsCanvasLog.i("260608 trace SStoFlexible.Q init"));
+        hookBeforeMethod(lpparam, target, "u0", new Class[0],
+                param -> PsCanvasLog.i("260608 trace SStoFlexible.u0 scaleEnd"));
+        hookBeforeMethod(lpparam, target, "I0", new Class[0],
+                param -> PsCanvasLog.i("260608 trace SStoFlexible.I0 startAnimation"));
+        hookBeforeMethod(lpparam, target, "L0", new Class[0], param -> {
+            if (is260608PanoramaActive(param.thisObject)) {
+                param.setResult(false);
+                PsCanvasLog.i("260608 blocked SStoFlexible.L0 while full panorama is active");
+                return;
+            }
+            PsCanvasLog.i("260608 trace SStoFlexible.L0 launch");
+        });
+        try {
+            XposedHelpers.findAndHookMethod(target, lpparam.classLoader, profile.scaleMethod(),
+                    ScaleGestureDetector.class, Integer.TYPE, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            PsCanvasLog.i("260608 trace SStoFlexible.t0 scale pointerCount="
+                                    + param.args[1]);
+                            Object containerView = SplitPolicyCompat.findContainerView(param.thisObject);
+                            if (handle260608PanoramaScale(containerView,
+                                    (ScaleGestureDetector) param.args[0],
+                                    (Integer) param.args[1])) {
+                                param.setResult(null);
+                                return;
+                            }
+                            if (ThreeSplitTouch502Compat.shouldUseCanvasSyncPinch(containerView)) {
+                                param.setResult(null);
+                                PsCanvasLog.d("260608 blocked x1.x.t0 in panorama 3-split");
+                                return;
+                            }
+                            int state = ObfFieldCompat.getInt(param.thisObject,
+                                    ObfFieldCompat.R_CHANGE_STATE, "f14152y");
+                            if (state == 0 || state == 2) {
+                                ObfFieldCompat.setInt(param.thisObject,
+                                        ObfFieldCompat.R_CHANGE_STATE, "f14152y", 1);
+                            }
+                        }
+                    });
+            PsCanvasLog.i("260608 SStoFlexible.t0 installed");
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 SStoFlexible.t0 failed", throwable);
+        }
+
+        try {
+            XposedHelpers.findAndHookMethod(target, lpparam.classLoader, profile.intentListMethod(),
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            Object result = param.getResult();
+                            if (result instanceof List) {
+                                SplitPolicyCompat.patchIntentListTaskIds(param.thisObject,
+                                        (List<?>) result);
+                            }
+                        }
+                    });
+            PsCanvasLog.i("260608 SStoFlexible.I installed");
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 SStoFlexible.I failed", throwable);
+        }
+
+        try {
+            XposedHelpers.findAndHookMethod(target, lpparam.classLoader,
+                    profile.launchBoundsMethod(), List.class, int[].class, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            Object result = param.getResult();
+                            if (result instanceof Bundle) {
+                                Context context = SplitPolicyCompat.findContext(param.thisObject);
+                                param.setResult(FlexibleTransitionCompat.fixLaunchBoundsBundle(
+                                        (Bundle) result, context));
+                            }
+                        }
+                    });
+            PsCanvasLog.i("260608 SStoFlexible.H installed");
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 SStoFlexible.H failed", throwable);
+        }
+
+        try {
+            Class<?> embeddedDecorClass = XposedHelpers.findClass(EMBEDDED_VIEW_DECOR,
+                    lpparam.classLoader);
+            Class<?> flexibleTaskViewClass = XposedHelpers.findClass(
+                    "com.oplus.flexiblewindow.FlexibleTaskView", lpparam.classLoader);
+            XposedHelpers.findAndHookMethod(target, lpparam.classLoader,
+                    profile.maskAnimationMethod(), android.view.SurfaceControl.Transaction.class,
+                    android.view.SurfaceControl.class, android.view.SurfaceControl.class,
+                    android.view.SurfaceControl.class, android.view.SurfaceControl.class,
+                    embeddedDecorClass, Integer.TYPE, flexibleTaskViewClass, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            PinchTransition502Compat.fixPanoramaMaskAnimRect(
+                                    param.thisObject, param.args[5]);
+                        }
+                    });
+            PsCanvasLog.i("260608 SStoFlexible.Z installed");
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 SStoFlexible.Z failed", throwable);
+        }
+    }
+
+    /** 502 uses pinch for panorama entry and spread for panorama exit. */
+    private static boolean handle260608PanoramaScale(Object containerView,
+                                                      ScaleGestureDetector detector,
+                                                      int pointerCount) {
+        if (pointerCount < 4 || containerView == null
+                || !ThreeSplitTouch502Compat.isThreeAppCanvas(containerView)) {
+            return false;
+        }
+        try {
+            Object manager = XposedHelpers.callMethod(
+                    containerView, "getPanoramaModeManager");
+            if (manager == null) {
+                return false;
+            }
+            boolean active = Boolean.TRUE.equals(XposedHelpers.callMethod(manager, "M"));
+            float scaleFactor = detector.getScaleFactor();
+            if (scaleFactor < 1.0f) {
+                if (!active) {
+                    XposedHelpers.callMethod(manager, "z", true);
+                    PsCanvasLog.i("260608 pinch entered full panorama; scale="
+                            + scaleFactor + " pointers=" + pointerCount);
+                }
+            } else if (scaleFactor > 1.0f && active) {
+                allowDirectionalPanoramaExit.set(Boolean.TRUE);
+                try {
+                    XposedHelpers.callMethod(manager, "A", true);
+                    PsCanvasLog.i("260608 spread exited full panorama; scale="
+                            + scaleFactor + " pointers=" + pointerCount);
+                } finally {
+                    allowDirectionalPanoramaExit.remove();
+                }
+            }
+            // Never let 700 reinterpret a four/five-finger scale as the
+            // three-floating-window transition.
+            return true;
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 panorama directional gesture failed", throwable);
+            return false;
+        }
+    }
+
+    private static void hook260608ThreeSplitTouchRestore(
+            XC_LoadPackage.LoadPackageParam lpparam, PsCanvasCompatibilityProfile profile) {
+        Class<?> animManagerClass = findClassSafe(profile.threeSplitAnimClass(), lpparam.classLoader);
+        if (animManagerClass == null) {
+            PsCanvasLog.e("260608 ThreeSplitAnim class missing", null);
+        } else {
+            hookVoidWhenPanoramaTouch(animManagerClass, "H0", lpparam, "resetAll");
+            hookVoidWhenPanoramaTouch(animManagerClass, "U0", lpparam,
+                    "startScaleDownAnim", Boolean.TYPE);
+            hookVoidWhenPanoramaTouch(animManagerClass, "e0", lpparam,
+                    "checkIfNeedAnim", Integer.TYPE, Integer.TYPE);
+            hookVoidWhenPanoramaTouch(animManagerClass, "p0", lpparam,
+                    "onControlBarLongPress");
+            try {
+                replaceMethod(lpparam, animManagerClass.getName(), "y0", new Class[0], param -> {
+                    if (ThreeSplitTouch502Compat.shouldBlockTouchAnim(param.thisObject)) {
+                        return false;
+                    }
+                    return XposedBridge.invokeOriginalMethod(
+                            param.method, param.thisObject, param.args);
+                });
+                PsCanvasLog.i("260608 ThreeSplitAnim installed on " + animManagerClass.getName());
+            } catch (Throwable throwable) {
+                PsCanvasLog.e("260608 ThreeSplitAnim.y0 failed", throwable);
+            }
+        }
+
+        Class<?> dragManagerClass = findClassSafe(profile.threeSplitDragClass(), lpparam.classLoader);
+        if (dragManagerClass == null) {
+            PsCanvasLog.e("260608 ThreeSplitDrag class missing", null);
+        } else {
+            Class<?> dragStateClass = findClassSafe("x1.a", lpparam.classLoader);
+            if (dragStateClass != null) {
+                hookVoidWhenPanoramaTouch(dragManagerClass, "b", lpparam,
+                        "handleThreeSplitDown", dragStateClass, MotionEvent.class);
+                hookVoidWhenPanoramaTouch(dragManagerClass, "c", lpparam,
+                        "handleThreeSplitMove", dragStateClass, MotionEvent.class);
+                hookVoidWhenPanoramaTouch(dragManagerClass, "d", lpparam,
+                        "handleThreeSplitUp", dragStateClass);
+            }
+            Class<?> embeddedDecorClass = findClassSafe(EMBEDDED_VIEW_DECOR, lpparam.classLoader);
+            if (embeddedDecorClass != null) {
+                hookVoidWhenPanoramaTouch(dragManagerClass, "e", lpparam,
+                        "initThreeSplitDrag", embeddedDecorClass);
+            }
+            PsCanvasLog.i("260608 ThreeSplitDrag installed on " + dragManagerClass.getName());
+        }
+    }
+
+    /**
+     * The 260608 manager is exposed by ContainerView. B0.z(true) is the native
+     * panorama entry path; B0.A(...) exits and must not be used here.
+     */
+    private static boolean enter260608PanoramaFromPinch(Object splitPolicy, Object containerView) {
+        if (containerView == null) {
+            PsCanvasLog.d("260608 panorama gate: ContainerView missing");
+            return false;
+        }
+        if (!ThreeSplitTouch502Compat.isThreeAppCanvas(containerView)) {
+            PsCanvasLog.d("260608 panorama gate: not a three-app canvas");
+            return false;
+        }
+        try {
+            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            Object rawLayout = adapter == null ? null : XposedHelpers.callMethod(adapter, "n");
+            PsCanvasLog.i("260608 panorama gate: layout=" + rawLayout);
+            if (!(rawLayout instanceof Integer)
+                    || !PanoramaModeCompat.shouldEnterFromPinch(3, (Integer) rawLayout)) {
+                return false;
+            }
+            Object manager = XposedHelpers.callMethod(containerView, "getPanoramaModeManager");
+            if (manager == null) {
+                PsCanvasLog.w("260608 panorama manager missing");
+                return false;
+            }
+            Object active = XposedHelpers.callMethod(manager, "M");
+            if (!Boolean.TRUE.equals(active)) {
+                XposedHelpers.callMethod(manager, "z", true);
+                PsCanvasLog.i("260608 entered full panorama mode from layout=" + rawLayout);
+            } else {
+                PsCanvasLog.d("260608 kept full panorama mode from layout=" + rawLayout);
+            }
+            return true;
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 panorama entry failed", throwable);
+            return false;
+        }
+    }
+
+    private static boolean is260608PanoramaActive(Object splitPolicy) {
+        Object containerView = SplitPolicyCompat.findContainerView(splitPolicy);
+        return is260608PanoramaManagerActive(containerView);
+    }
+
+    private static boolean is260608PanoramaManagerActive(Object containerView) {
+        if (containerView == null) {
+            return false;
+        }
+        try {
+            Object manager = XposedHelpers.callMethod(containerView, "getPanoramaModeManager");
+            return manager != null && Boolean.TRUE.equals(XposedHelpers.callMethod(manager, "M"));
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 panorama state lookup failed", throwable);
+            return false;
+        }
+    }
+
+    private static void hook260608CanvasController(XC_LoadPackage.LoadPackageParam lpparam,
+                                                    PsCanvasCompatibilityProfile profile) {
+        try {
+            XposedHelpers.findAndHookMethod(profile.canvasControllerClass(), lpparam.classLoader,
+                    "O", Boolean.TYPE, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            param.args[0] = false;
+                        }
+                    });
+            PsCanvasLog.i("260608 CanvasController.O installed");
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("260608 CanvasController.O failed", throwable);
+        }
     }
 
     /**
@@ -1456,7 +1928,7 @@ public final class PsCanvasHooks {
     private static void hookBlockSplitBarThreeSplitDrag(XC_LoadPackage.LoadPackageParam lpparam) {
         String E_CLASS = "com.oplus.pscanvas.canvasmode.canvas.E";
 
-        // Block E.u0(c, float, float, float, float) — three-split spring drag
+        // 260608 renamed the five-argument three-split spring handler from u0 to v0.
         try {
             Class<?> eClass = findClassFirst(lpparam.classLoader, E_CLASS);
             if (eClass == null) {
@@ -1471,7 +1943,7 @@ public final class PsCanvasHooks {
                 }
             }
             if (eInnerC != null) {
-                XposedHelpers.findAndHookMethod(eClass, "u0",
+                XposedHelpers.findAndHookMethod(eClass, "v0",
                         eInnerC, Float.TYPE, Float.TYPE, Float.TYPE, Float.TYPE,
                         new XC_MethodHook() {
                             @Override
@@ -1479,12 +1951,12 @@ public final class PsCanvasHooks {
                                 SplitBar502Compat.blockEU0(param);
                             }
                         });
-                PsCanvasLog.i("P1: hookBlockSplitBarThreeSplitDrag u0 installed on E");
+                PsCanvasLog.i("260608 P1: hookBlockSplitBarThreeSplitDrag v0 installed on E");
             } else {
-                PsCanvasLog.w("P1: E.u0 hook skipped, E.c inner class not found");
+                PsCanvasLog.w("260608 P1: E.v0 hook skipped, E.c inner class not found");
             }
         } catch (Throwable t) {
-            PsCanvasLog.e("P1: hookBlockSplitBarThreeSplitDrag u0 failed", t);
+            PsCanvasLog.e("260608 P1: hookBlockSplitBarThreeSplitDrag v0 failed", t);
         }
 
         // Block E.R() — spring animation initialization

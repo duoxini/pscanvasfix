@@ -9,14 +9,15 @@ if (-not (Test-Path $LogPath)) {
 }
 
 $mustHave = @(
-    "install v1.0",
-    "hookPanoramaMaskAnimRectFix installed",
-    "hook502ThreeSplitTouchRestore installed",
-    "502 dummy prepare t0",
-    "502 layout remap layout",
-    "positionChangeToSplit onAnimationEnd result:true",
-    "502-style finish",
-    "hookScaleListener502 scale hooks",
+    "install profile=260608",
+    "260608 SStoFlexible.t0 installed",
+    "260608 SStoFlexible.I installed",
+    "260608 SStoFlexible.H installed",
+    "260608 SStoFlexible.Z installed",
+    "260608 ThreeSplitAnim installed",
+    "260608 ThreeSplitDrag installed",
+    "260608 CanvasController.O installed",
+    "profile=260608 hooks summary",
     # P0: three-split-together blocking
     "P0: hookBlockThreeSplitTogether e3 installed",
     "blocked e3 three-split-together entry",
@@ -24,7 +25,7 @@ $mustHave = @(
     "P0: hookBlockThreeSplitTogether E2 installed",
     "P0: hookBlockThreeSplitTogether i2 installed",
     # P1: SplitBar drag blocking
-    "P1: hookBlockSplitBarThreeSplitDrag u0 installed",
+    "260608 P1: hookBlockSplitBarThreeSplitDrag v0 installed",
     "P1: hookBlockSplitBarThreeSplitDrag R installed",
     # P2: getLaunchRect fix
     "P2: hookFixPanoramaLaunchRect installed",
@@ -41,10 +42,12 @@ $mustHaveOptional = @(
 )
 
 $mustNotHave = @(
-    "ensureCanvasLayout3ForTransition",
-    "M1 clamped layoutOrientation 4 -> 3",
-    "notifyPrepare.*toggle returned false",
-    "hookPanoramaMaskAnimRectFix failed",
+    "unsupported profile",
+    "260608 SStoFlexible.t0 failed",
+    "260608 SStoFlexible.I failed",
+    "260608 SStoFlexible.H failed",
+    "260608 SStoFlexible.Z failed",
+    "260608 CanvasController.O failed",
     # P0: three-split-together must not appear
     "onEnterThreeSplitTogether",
     "onExitThreeSplitTogether",

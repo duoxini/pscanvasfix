@@ -31,7 +31,7 @@ public final class SplitBar502Compat {
      */
     public static void blockE3Entry(XC_MethodHook.MethodHookParam param) {
         int layoutParam = (Integer) param.args[2];
-        if (layoutParam == 3) {
+        if (PanoramaModeCompat.shouldBlockThreeEqualEntry(layoutParam)) {
             PsCanvasLog.d("blocked e3 three-split-together entry (i3=3)");
             param.setResult(null);
             return;

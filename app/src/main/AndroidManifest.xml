@@ -9,7 +9,7 @@
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data
             android:name="xposeddescription"
-            android:value="在 700 版 com.oplus.pscanvas 上恢复 502 版三应用两列全景分屏与五指捏合转浮窗行为" />
+            android:value="在已适配的新版 com.oplus.pscanvas 上恢复 502 版三分屏与全景交互" />
         <meta-data android:name="xposedminversion" android:value="93" />
         <meta-data android:name="xposedscope" android:value="com.oplus.pscanvas" />
     </application>
