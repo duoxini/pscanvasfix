@@ -15,3 +15,6 @@ Thumbs.db
 # Signing
 *.jks
 *.keystore
+
+# Local Git worktrees
+.worktrees/
