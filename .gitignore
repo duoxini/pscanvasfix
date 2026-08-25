@@ -21,3 +21,10 @@ Thumbs.db
 
 # Local adaptation notes; never publish with the module.
 docs/
+
+# Local reverse-engineering material and device diagnostics.
+logs/
+scripts/
+adb_connect_debug.bat
+capture_logs*.bat
+debug_logs.bat
