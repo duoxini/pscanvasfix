@@ -20,8 +20,4 @@ public final class PanoramaModeCompat {
         return appCount == 3 && layout >= 3 && layout <= 7;
     }
 
-    /** Layout value 3 is the 700-only three-equal-column entry. */
-    public static boolean shouldBlockThreeEqualEntry(int layout) {
-        return layout == 3;
-    }
 }

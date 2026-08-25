@@ -70,6 +70,10 @@ public final class PsCanvasHooks {
     private static volatile boolean deferredHooksInstalled = false;
     private static volatile boolean equalWidthCanvasLogged = false;
     private static volatile PsCanvasCompatibilityProfile activeProfile;
+    private static final String NEW_THREE_SPLIT_LEFT_ANCHOR =
+            "pscanvasfix_new_three_split_left_anchor";
+    private static final String DIRECT_NEW_THREE_SPLIT_ENTRY =
+            "pscanvasfix_direct_new_three_split_entry";
     private static final ThreadLocal<Boolean> allowDirectionalPanoramaExit =
             new ThreadLocal<>();
 
@@ -95,10 +99,76 @@ public final class PsCanvasHooks {
         hook260608BlockPanoramaTapExit(lpparam);
         hook260608ThreeSplitBoundsRequest(lpparam);
         hook260608EqualWidthCanvas(lpparam);
+        hook260608DirectNewThreeSplitEntry(lpparam);
         hookBlockThreeSplitTogether(lpparam);
         hookBlockSplitBarThreeSplitDrag(lpparam);
         PsCanvasLog.i("profile=" + profile.id() + " hooks summary: verified groups installed; "
                 + "unverified SStoFlexible short-name hooks skipped");
+    }
+
+    /**
+     * A launcher-created three split is delivered as a fresh canvas activity
+     * (startCanvasFrom=2), not through ContainerView.e3. Keep that entry on the
+     * 502 left anchor and suppress only its activity-open transition.
+     */
+    private static void hook260608DirectNewThreeSplitEntry(
+            XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    CONTAINER_ACTIVITY, lpparam.classLoader, "onCreate", Bundle.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            Activity activity = (Activity) param.thisObject;
+                            Intent intent = activity.getIntent();
+                            Bundle extras = intent == null ? null : intent.getExtras();
+                            if (!isDirectNewThreeSplit(extras)) {
+                                return;
+                            }
+
+                            int oldFocus = extras.getInt(
+                                    "androidx.flexible.focusIndex", -1);
+                            int oldSide = extras.getInt("lineLayoutFocusSide", 0);
+                            Bundle normalized = new Bundle(extras);
+                            normalized.putInt("androidx.flexible.focusIndex", 0);
+                            normalized.putInt("lineLayoutFocusSide", 0);
+                            intent.replaceExtras(normalized);
+                            XposedHelpers.setAdditionalInstanceField(param.thisObject,
+                                    DIRECT_NEW_THREE_SPLIT_ENTRY, Boolean.TRUE);
+                            PsCanvasLog.i("260608 direct new three-split entry: left anchor "
+                                    + "focus=" + oldFocus + "->0 side=" + oldSide + "->0");
+                        }
+
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (!Boolean.TRUE.equals(
+                                    XposedHelpers.getAdditionalInstanceField(param.thisObject,
+                                            DIRECT_NEW_THREE_SPLIT_ENTRY))) {
+                                return;
+                            }
+                            XposedHelpers.removeAdditionalInstanceField(param.thisObject,
+                                    DIRECT_NEW_THREE_SPLIT_ENTRY);
+                            ((Activity) param.thisObject).overridePendingTransition(0, 0);
+                            PsCanvasLog.i("260608 direct new three-split entry animation disabled");
+                        }
+                    });
+            PsCanvasLog.i("260608 direct new three-split entry hook installed");
+        } catch (Throwable t) {
+            PsCanvasLog.e("260608 direct new three-split entry hook failed", t);
+        }
+    }
+
+    private static boolean isDirectNewThreeSplit(Bundle extras) {
+        if (extras == null
+                || extras.getInt("startCanvasFrom", 0) != 2
+                || extras.getInt("androidx.flexible.layoutOrientation", 0) != 3) {
+            return false;
+        }
+        int[] taskIds = extras.getIntArray("androidx.flexible.taskIdList");
+        ArrayList<Intent> intents = extras.getParcelableArrayList(
+                "androidx.flexible.intentList", Intent.class);
+        return taskIds != null && taskIds.length == 3
+                && intents != null && intents.size() == 3;
     }
 
     /** Keep a normal single tap from exiting the full panorama overview. */
@@ -145,9 +215,10 @@ public final class PsCanvasHooks {
 
     /**
      * 700 adds isThreeSplitTogether to the three-intent bounds request. That makes
-     * system_server allocate three 1113px tasks even when the canvas displays the
-     * 502-style 1600px columns, producing black side bars. 502 sends the same
-     * request without this flag.
+     * system_server allocate three 1113px tasks. 502 sends the same request without
+     * this flag. The 260608 policy then returns 1685px portrait tasks, so normalize
+     * both the initial multi-task response and every later single-task refresh to
+     * the same 502 column width used by the canvas.
      */
     private static void hook260608ThreeSplitBoundsRequest(
             XC_LoadPackage.LoadPackageParam lpparam) {
@@ -161,9 +232,25 @@ public final class PsCanvasHooks {
                             if (intent != null && intent.getBooleanExtra(
                                     "isThreeSplitTogether", false)) {
                                 intent.removeExtra("isThreeSplitTogether");
+                                param.setObjectExtra("pscanvasfix_502_single_bounds", Boolean.TRUE);
                                 PsCanvasLog.i("260608 B1.l.o: removed 700 "
                                         + "isThreeSplitTogether from single-task request");
                             }
+                        }
+
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (!Boolean.TRUE.equals(param.getObjectExtra(
+                                    "pscanvasfix_502_single_bounds"))
+                                    || !(param.getResult() instanceof Bundle)) {
+                                return;
+                            }
+                            Bundle normalized = normalize260608ThreeSplitTaskBounds(
+                                    (Bundle) param.getResult());
+                            param.setResult(normalized);
+                            PsCanvasLog.i("260608 B1.l.o: normalized single-task bounds to "
+                                    + normalized.getParcelable(
+                                    "androidx.flexible.LaunchBounds", Rect.class));
                         }
                     });
             PsCanvasLog.i("260608 B1.l.o 502 single-task bounds installed");
@@ -190,7 +277,7 @@ public final class PsCanvasHooks {
                             Bundle restored502Request = new Bundle(request);
                             restored502Request.remove("isThreeSplitTogether");
                             param.args[2] = restored502Request;
-                            param.setObjectExtra("pscanvasfix_502_bounds", Boolean.TRUE);
+                            param.setObjectExtra("pscanvasfix_502_multi_bounds", Boolean.TRUE);
                             PsCanvasLog.i("260608 B1.l.n: removed 700 "
                                     + "isThreeSplitTogether bounds flag");
                         }
@@ -198,39 +285,25 @@ public final class PsCanvasHooks {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!Boolean.TRUE.equals(param.getObjectExtra(
-                                    "pscanvasfix_502_bounds"))
+                                    "pscanvasfix_502_multi_bounds"))
                                     || !(param.getResult() instanceof Bundle)) {
                                 return;
                             }
-                            Bundle result = (Bundle) param.getResult();
+                            Bundle result = new Bundle((Bundle) param.getResult());
                             ArrayList<Bundle> taskBundles = result.getParcelableArrayList(
                                     "androidx.flexible.layout.info.list", Bundle.class);
                             if (taskBundles == null || taskBundles.size() != 3) {
                                 return;
                             }
-                            ArrayList<Bundle> restoredTaskBundles = new ArrayList<>(3);
+                            ArrayList<Bundle> normalizedTaskBundles = new ArrayList<>(3);
                             for (Bundle taskBundle : taskBundles) {
-                                Bundle restoredTask = new Bundle(taskBundle);
-                                Rect launchBounds = restoredTask.getParcelable(
-                                        "androidx.flexible.LaunchBounds", Rect.class);
-                                if (launchBounds != null && launchBounds.height() > 0) {
-                                    int width = PanoramaModeCompat.equalColumnWidth(
-                                            launchBounds.height());
-                                    Rect restoredBounds = new Rect(launchBounds.left,
-                                            launchBounds.top, launchBounds.left + width,
-                                            launchBounds.bottom);
-                                    restoredTask.putParcelable(
-                                            "androidx.flexible.LaunchBounds", restoredBounds);
-                                    restoredTask.putParcelable(
-                                            "androidx.flexible.LaunchHorizontalBounds",
-                                            new Rect(restoredBounds));
-                                }
-                                restoredTaskBundles.add(restoredTask);
+                                normalizedTaskBundles.add(
+                                        normalize260608ThreeSplitTaskBounds(taskBundle));
                             }
                             result.putParcelableArrayList(
-                                    "androidx.flexible.layout.info.list", restoredTaskBundles);
+                                    "androidx.flexible.layout.info.list", normalizedTaskBundles);
                             param.setResult(result);
-                            PsCanvasLog.i("260608 B1.l.n: synchronized task launch bounds "
+                            PsCanvasLog.i("260608 B1.l.n: normalized initial three-task bounds "
                                     + "to 502 column width");
                         }
                     });
@@ -238,6 +311,22 @@ public final class PsCanvasHooks {
         } catch (Throwable t) {
             PsCanvasLog.e("260608 B1.l.n bounds request install failed", t);
         }
+    }
+
+    private static Bundle normalize260608ThreeSplitTaskBounds(Bundle source) {
+        Bundle normalized = new Bundle(source);
+        Rect launchBounds = normalized.getParcelable(
+                "androidx.flexible.LaunchBounds", Rect.class);
+        if (launchBounds == null || launchBounds.height() <= 0) {
+            return normalized;
+        }
+        int width = PanoramaModeCompat.equalColumnWidth(launchBounds.height());
+        Rect columnBounds = new Rect(launchBounds.left, launchBounds.top,
+                launchBounds.left + width, launchBounds.bottom);
+        normalized.putParcelable("androidx.flexible.LaunchBounds", columnBounds);
+        normalized.putParcelable("androidx.flexible.LaunchHorizontalBounds",
+                new Rect(columnBounds));
+        return normalized;
     }
 
     /** Restore the 502 first-open canvas: two portrait columns plus a right-side peek. */
@@ -1828,26 +1917,74 @@ public final class PsCanvasHooks {
     // ============================================================
 
     /**
-     * P0 — Block 700 three-split-together callback chain.
-     * 502 has no onEnterThreeSplitTogether / onExitThreeSplitTogether.
-     * Block e3(), f3(), E2(), i2() so panorama layout 4 is never
-     * overridden by 3-equal-column setup.
+     * P0 — Keep only the useful part of the 700 three-split callback chain.
+     *
+     * ContainerView.e3(..., 3) must run when a newly-created two-split becomes
+     * a three-split. It synchronously replaces all three TaskData bounds using
+     * the B1.l.n result normalized by hook260608ThreeSplitBoundsRequest().
+     * Blocking e3 leaves the original two-split width in every task and causes
+     * aspect-fit letterboxing. The later 700-only layout/drag paths remain
+     * blocked so they cannot override the 502 panorama behavior.
      */
     private static void hookBlockThreeSplitTogether(XC_LoadPackage.LoadPackageParam lpparam) {
-        // Block containerView.e3(Context, List, int) when i3==3
+        // A live 2-to-3 conversion focuses the newly-added third task. On layout
+        // 3 that makes ContainerView.T select lineLayoutFocusSide=2 and pans the
+        // wide canvas to the right. Mark only this transition, then redirect its
+        // one automatic app-enter focus pass to index 0 (the 502 left anchor).
         try {
             XposedHelpers.findAndHookMethod(
                     CONTAINER_VIEW, lpparam.classLoader, "e3",
                     android.content.Context.class, List.class, Integer.TYPE,
                     new XC_MethodHook() {
                         @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            SplitBar502Compat.blockE3Entry(param);
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            int targetLayout = (Integer) param.args[2];
+                            List<?> tasks = (List<?>) param.args[1];
+                            if (!param.hasThrowable() && targetLayout == 3
+                                    && tasks != null && tasks.size() == 3) {
+                                XposedHelpers.setAdditionalInstanceField(param.thisObject,
+                                        NEW_THREE_SPLIT_LEFT_ANCHOR, Boolean.TRUE);
+                                PsCanvasLog.d("260608 marked new 2-to-3 canvas for left anchor");
+                            }
                         }
                     });
-            PsCanvasLog.i("P0: hookBlockThreeSplitTogether e3 installed on ContainerView");
+            PsCanvasLog.i("260608 new three-split anchor marker installed on ContainerView.e3");
         } catch (Throwable t) {
-            PsCanvasLog.e("P0: hookBlockThreeSplitTogether e3 failed", t);
+            PsCanvasLog.e("260608 new three-split anchor marker failed", t);
+        }
+
+        try {
+            XposedHelpers.findAndHookMethod(
+                    CONTAINER_VIEW, lpparam.classLoader, "R", Integer.TYPE,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if ((Integer) param.args[0] != 2
+                                    || !Boolean.TRUE.equals(
+                                    XposedHelpers.getAdditionalInstanceField(param.thisObject,
+                                            NEW_THREE_SPLIT_LEFT_ANCHOR))
+                                    || !isNewTaskAppEnterAutoScale()) {
+                                return;
+                            }
+                            Object adapter = XposedHelpers.callMethod(
+                                    param.thisObject, "getAdapter");
+                            int count = (Integer) XposedHelpers.callMethod(adapter, "getCount");
+                            int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
+                            if (count != 3 || layout != 3) {
+                                XposedHelpers.removeAdditionalInstanceField(param.thisObject,
+                                        NEW_THREE_SPLIT_LEFT_ANCHOR);
+                                return;
+                            }
+                            param.args[0] = 0;
+                            XposedHelpers.removeAdditionalInstanceField(param.thisObject,
+                                    NEW_THREE_SPLIT_LEFT_ANCHOR);
+                            PsCanvasLog.i("260608 redirected new three-split initial anchor "
+                                    + "from right to left");
+                        }
+                    });
+            PsCanvasLog.i("260608 new three-split left anchor installed on ContainerView.R");
+        } catch (Throwable t) {
+            PsCanvasLog.e("260608 new three-split left anchor failed", t);
         }
 
         // Block containerView.f3(List) — update resizable rects in three-split
@@ -1913,6 +2050,18 @@ public final class PsCanvasHooks {
         } catch (Throwable t) {
             PsCanvasLog.e("P0: hookBlockThreeSplitTogether i2 failed", t);
         }
+    }
+
+    private static boolean isNewTaskAppEnterAutoScale() {
+        StackTraceElement[] trace = Thread.currentThread().getStackTrace();
+        for (int index = 0; index < Math.min(trace.length, 20); index++) {
+            StackTraceElement frame = trace[index];
+            if (frame.getClassName().contains(".canvasmode.canvas.ContainerActivity$")
+                    && "c".equals(frame.getMethodName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ============================================================

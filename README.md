@@ -4,7 +4,7 @@
 
 ## 已适配版本
 
-- 模块发布版本：`1.1`（`versionCode 2`）
+- 模块发布版本：`1.2`（`versionCode 3`）
 - 适配档案：`260608`
 - 系统组件：`com.oplus.pscanvas`
 - 系统 APK：`OplusFlexibleWindowUI.apk`

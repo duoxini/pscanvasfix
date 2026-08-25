@@ -22,13 +22,6 @@ public final class PanoramaModeCompatTest {
     }
 
     @Test
-    public void blocksOnlyThe700InitialThreeEqualEntry() {
-        assertTrue(PanoramaModeCompat.shouldBlockThreeEqualEntry(3));
-        assertFalse(PanoramaModeCompat.shouldBlockThreeEqualEntry(0));
-        assertFalse(PanoramaModeCompat.shouldBlockThreeEqualEntry(4));
-    }
-
-    @Test
     public void entersOnlyForThreeAppsInPanoramaLayoutRange() {
         assertTrue(PanoramaModeCompat.shouldEnterFromPinch(3, 3));
         assertTrue(PanoramaModeCompat.shouldEnterFromPinch(3, 4));

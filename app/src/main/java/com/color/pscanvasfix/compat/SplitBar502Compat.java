@@ -4,40 +4,25 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 
 /**
- * Block 700-only three-split-together and split-bar drag behaviors.
+ * Block the 700-only three-split layout and split-bar drag behaviors.
  *
  * 502 has NO:
- *   - Three-split-together callback (onEnterThreeSplitTogether / onExitThreeSplitTogether)
  *   - Spring-based three-split drag handler (E.u0)
  *   - Scroll split bar in three-split (E2)
  *   - Enlarge for three-split view (i2)
  *   - Three-split-together sub-surface z-ordering
  *   - Panorama getLaunchRect() override
  *
- * All these paths must be blocked so 502 panorama layout 4 (2+1 peek)
- * is never overridden by 700 three-equal-column layout.
+ * ContainerView.e3 is deliberately not blocked: its 2-to-3 transition is
+ * required to copy the normalized task bounds into all three TaskData objects.
+ * The remaining paths stay blocked so the 502 panorama is not overridden by
+ * the 700 three-equal-column layout.
  */
 public final class SplitBar502Compat {
 
     private SplitBar502Compat() {}
 
-    // ---- P0: Three-split-together callback chain ----
-
-    /**
-     * Block containerView.e3() when i3==3 (three-split-together entry).
-     * 502 has no three-split-together mode — the onEnterThreeSplitTogether
-     * callback must not trigger 3-equal-column layout setup.
-     * Allow i3==0 (exit from three-split-together) to proceed.
-     */
-    public static void blockE3Entry(XC_MethodHook.MethodHookParam param) {
-        int layoutParam = (Integer) param.args[2];
-        if (PanoramaModeCompat.shouldBlockThreeEqualEntry(layoutParam)) {
-            PsCanvasLog.d("blocked e3 three-split-together entry (i3=3)");
-            param.setResult(null);
-            return;
-        }
-        PsCanvasLog.d("e3 exit allowed i3=" + layoutParam);
-    }
+    // ---- P0: Three-split layout callbacks after the required e3 sync ----
 
     /**
      * Block containerView.f3() — update resizable split rects for three-split.
