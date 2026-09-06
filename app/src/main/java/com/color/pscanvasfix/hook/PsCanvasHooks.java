@@ -206,9 +206,7 @@ public final class PsCanvasHooks {
     /** Keep a normal single tap from exiting the full panorama overview. */
     private static void hook260608BlockPanoramaTapExit(
             XC_LoadPackage.LoadPackageParam lpparam) {
-        Class<?> managerClass = findClassFirst(lpparam.classLoader,
-                "com.oplus.pscanvas.canvasmode.canvas.B0",
-                "com.oplus.pscanvas.canvasmode.canvas.A0");
+        Class<?> managerClass = resolvePanoramaModeManagerClass(lpparam);
         if (managerClass == null) {
             PsCanvasLog.w("260608 panorama manager class missing for tap-exit hook");
             return;
@@ -229,6 +227,29 @@ public final class PsCanvasHooks {
                     + managerClass.getName());
         } catch (Throwable throwable) {
             PsCanvasLog.e("260608 panorama single-tap exit hook failed", throwable);
+        }
+    }
+
+    /**
+     * Resolve the PanoramaModeManager class structurally: take the declared
+     * return type of ContainerView.getPanoramaModeManager(). The obfuscated
+     * class name differs between generations (260403 uses canvas.A0,
+     * 260512/260608 use canvas.B0) and an unrelated class may occupy the
+     * same short name (260403 has a canvas.B0 without any A(boolean)).
+     */
+    private static Class<?> resolvePanoramaModeManagerClass(
+            XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            Class<?> containerViewClass = XposedHelpers.findClass(
+                    CONTAINER_VIEW, lpparam.classLoader);
+            Method getter = containerViewClass.getDeclaredMethod(
+                    "getPanoramaModeManager");
+            getter.setAccessible(true);
+            return getter.getReturnType();
+        } catch (Throwable ignored) {
+            return findClassFirst(lpparam.classLoader,
+                    "com.oplus.pscanvas.canvasmode.canvas.B0",
+                    "com.oplus.pscanvas.canvasmode.canvas.A0");
         }
     }
 
