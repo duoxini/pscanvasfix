@@ -24,6 +24,7 @@ import com.color.pscanvasfix.compat.SplitBar502Compat;
 import com.color.pscanvasfix.compat.SplitPolicyCompat;
 import com.color.pscanvasfix.compat.ThreeSplitTouch502Compat;
 
+import java.io.File;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -82,28 +83,59 @@ public final class PsCanvasHooks {
             return;
         }
         String apkPath = lpparam.appInfo == null ? null : lpparam.appInfo.sourceDir;
-        String sha256 = ApkFingerprint.sha256(apkPath);
-        PsCanvasCompatibilityProfile profile = PsCanvasCompatibilityProfile.find(sha256);
-        if (profile == null) {
-            XposedBridge.log(TAG + ": unsupported profile sha256=" + sha256 + " apk=" + apkPath);
-            return;
-        }
-        activeProfile = profile;
-        XposedBridge.log(TAG + ": hooking " + lpparam.packageName
-                + " profile=" + profile.id());
-        PsCanvasLog.i("install profile=" + profile.id() + " sha256=" + sha256);
 
-        hook260608VerifiedSstoFlexible(lpparam, profile);
-        hook260608ThreeSplitTouchRestore(lpparam, profile);
-        hook260608CanvasController(lpparam, profile);
+        // SHA-256 is diagnostics only now: it is logged but never gates install().
+        // A null / unknown profile must NOT disable the module.
+        ApkFingerprint.ApkInfo apkInfo = ApkFingerprint.collect(apkPath);
+        PsCanvasLog.i("install target=" + lpparam.packageName
+                + " (diagnostic only, not gating) " + apkInfo.brief());
+
+        // Structural symbol resolution, run once per process and cached.
+        File apkFile = apkPath == null ? null : new File(apkPath);
+        PsCanvasSymbols symbols = PsCanvasSymbolResolver.resolveCached(apkFile);
+        PsCanvasLog.i(CapabilityReport.render(
+                apkInfo, PsCanvasSymbolResolver.dexClassCount(), symbols));
+
+        // Keep the exact profile around for diagnostics / known-symbol hints.
+        // It must never gate anything.
+        PsCanvasCompatibilityProfile profile = PsCanvasCompatibilityProfile.find(apkInfo.sha256);
+        if (profile != null) {
+            activeProfile = profile;
+        }
+
+        // Install per capability group. A missing role only SKIPs its own group.
+        if (symbols.role(PsCanvasSymbols.Role.SSTO_FLEXIBLE).available()) {
+            hook260608VerifiedSstoFlexible(lpparam, profile, symbols);
+        } else {
+            PsCanvasLog.w("install: sstoFlexible SKIPPED (no reliable class resolved)");
+        }
+
+        boolean anim = symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_ANIM).available();
+        boolean drag = symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_DRAG).available();
+        if (anim && drag) {
+            hook260608ThreeSplitTouchRestore(lpparam, profile, symbols);
+        } else {
+            PsCanvasLog.w("install: threeSplitTouch SKIPPED"
+                    + " (anim=" + anim + " drag=" + drag + ")");
+        }
+
+        if (symbols.role(PsCanvasSymbols.Role.CANVAS_CONTROLLER).available()) {
+            hook260608CanvasController(lpparam, profile, symbols);
+        } else {
+            PsCanvasLog.w("install: canvasController SKIPPED (no reliable class resolved)");
+        }
+
+        // The remaining groups are independent capabilities: let them run and each
+        // one logs its own install / failure. They no longer depend on a profile.
         hook260608BlockPanoramaTapExit(lpparam);
         hook260608ThreeSplitBoundsRequest(lpparam);
         hook260608EqualWidthCanvas(lpparam);
         hook260608DirectNewThreeSplitEntry(lpparam);
         hookBlockThreeSplitTogether(lpparam);
         hookBlockSplitBarThreeSplitDrag(lpparam);
-        PsCanvasLog.i("profile=" + profile.id() + " hooks summary: verified groups installed; "
-                + "unverified SStoFlexible short-name hooks skipped");
+
+        PsCanvasLog.i("install: capability-driven install complete;"
+                + " enabled=" + symbols.enabledCapabilities());
     }
 
     /**
@@ -433,10 +465,21 @@ public final class PsCanvasHooks {
         return null;
     }
 
-    /** Install only SStoFlexible methods whose 260608 DEX signatures are verified. */
+    /** Install only SStoFlexible methods whose DEX signatures are verified. */
     private static void hook260608VerifiedSstoFlexible(XC_LoadPackage.LoadPackageParam lpparam,
-                                                        PsCanvasCompatibilityProfile profile) {
-        String target = profile.sstoFlexibleClass();
+                                                        PsCanvasCompatibilityProfile profile,
+                                                        PsCanvasSymbols symbols) {
+        PsCanvasSymbols.RoleSymbol ssto =
+                symbols.role(PsCanvasSymbols.Role.SSTO_FLEXIBLE);
+        String target = ssto.className;
+        String scaleMethod = ssto.scaleMethod != null ? ssto.scaleMethod
+                : (profile == null ? null : profile.scaleMethod());
+        String intentListMethod = ssto.intentListMethod != null ? ssto.intentListMethod
+                : (profile == null ? null : profile.intentListMethod());
+        String launchBoundsMethod = ssto.launchBoundsMethod != null ? ssto.launchBoundsMethod
+                : (profile == null ? null : profile.launchBoundsMethod());
+        String maskAnimMethod = ssto.maskAnimMethod != null ? ssto.maskAnimMethod
+                : (profile == null ? null : profile.maskAnimationMethod());
         // These no-argument methods are verified from the 260608 DEX by their
         // distinctive transition strings.  They only provide runtime evidence
         // for the next mapping step; they do not alter the OEM transition.
@@ -455,7 +498,7 @@ public final class PsCanvasHooks {
             PsCanvasLog.i("260608 trace SStoFlexible.L0 launch");
         });
         try {
-            XposedHelpers.findAndHookMethod(target, lpparam.classLoader, profile.scaleMethod(),
+            XposedHelpers.findAndHookMethod(target, lpparam.classLoader, scaleMethod,
                     ScaleGestureDetector.class, Integer.TYPE, new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
@@ -487,7 +530,7 @@ public final class PsCanvasHooks {
         }
 
         try {
-            XposedHelpers.findAndHookMethod(target, lpparam.classLoader, profile.intentListMethod(),
+            XposedHelpers.findAndHookMethod(target, lpparam.classLoader, intentListMethod,
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
@@ -505,7 +548,7 @@ public final class PsCanvasHooks {
 
         try {
             XposedHelpers.findAndHookMethod(target, lpparam.classLoader,
-                    profile.launchBoundsMethod(), List.class, int[].class, new XC_MethodHook() {
+                    launchBoundsMethod, List.class, int[].class, new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             Object result = param.getResult();
@@ -527,7 +570,7 @@ public final class PsCanvasHooks {
             Class<?> flexibleTaskViewClass = XposedHelpers.findClass(
                     "com.oplus.flexiblewindow.FlexibleTaskView", lpparam.classLoader);
             XposedHelpers.findAndHookMethod(target, lpparam.classLoader,
-                    profile.maskAnimationMethod(), android.view.SurfaceControl.Transaction.class,
+                    maskAnimMethod, android.view.SurfaceControl.Transaction.class,
                     android.view.SurfaceControl.class, android.view.SurfaceControl.class,
                     android.view.SurfaceControl.class, android.view.SurfaceControl.class,
                     embeddedDecorClass, Integer.TYPE, flexibleTaskViewClass, new XC_MethodHook() {
@@ -585,8 +628,14 @@ public final class PsCanvasHooks {
     }
 
     private static void hook260608ThreeSplitTouchRestore(
-            XC_LoadPackage.LoadPackageParam lpparam, PsCanvasCompatibilityProfile profile) {
-        Class<?> animManagerClass = findClassSafe(profile.threeSplitAnimClass(), lpparam.classLoader);
+            XC_LoadPackage.LoadPackageParam lpparam, PsCanvasCompatibilityProfile profile,
+            PsCanvasSymbols symbols) {
+        String animClass = symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_ANIM).className;
+        if (animClass == null && profile != null) {
+            animClass = profile.threeSplitAnimClass();
+        }
+        Class<?> animManagerClass = animClass == null
+                ? null : findClassSafe(animClass, lpparam.classLoader);
         if (animManagerClass == null) {
             PsCanvasLog.e("260608 ThreeSplitAnim class missing", null);
         } else {
@@ -611,7 +660,12 @@ public final class PsCanvasHooks {
             }
         }
 
-        Class<?> dragManagerClass = findClassSafe(profile.threeSplitDragClass(), lpparam.classLoader);
+        String dragClass = symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_DRAG).className;
+        if (dragClass == null && profile != null) {
+            dragClass = profile.threeSplitDragClass();
+        }
+        Class<?> dragManagerClass = dragClass == null
+                ? null : findClassSafe(dragClass, lpparam.classLoader);
         if (dragManagerClass == null) {
             PsCanvasLog.e("260608 ThreeSplitDrag class missing", null);
         } else {
@@ -692,9 +746,14 @@ public final class PsCanvasHooks {
     }
 
     private static void hook260608CanvasController(XC_LoadPackage.LoadPackageParam lpparam,
-                                                    PsCanvasCompatibilityProfile profile) {
+                                                    PsCanvasCompatibilityProfile profile,
+                                                    PsCanvasSymbols symbols) {
+        String controllerClass = symbols.role(PsCanvasSymbols.Role.CANVAS_CONTROLLER).className;
+        if (controllerClass == null && profile != null) {
+            controllerClass = profile.canvasControllerClass();
+        }
         try {
-            XposedHelpers.findAndHookMethod(profile.canvasControllerClass(), lpparam.classLoader,
+            XposedHelpers.findAndHookMethod(controllerClass, lpparam.classLoader,
                     "O", Boolean.TYPE, new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {

@@ -33,6 +33,19 @@ android {
     lint {
         disable 'BlockedPrivateApi'
     }
+
+    testOptions {
+        unitTests {
+            all { test ->
+                // Forward pscanvas.* system properties (e.g. -Dpscanvas.apk.dir)
+                // to the unit test JVM for the offline Resolver verification.
+                test.systemProperties.putAll(
+                        System.properties.findAll { k, v ->
+                            k.toString().startsWith('pscanvas.')
+                        })
+            }
+        }
+    }
 }
 
 dependencies {
