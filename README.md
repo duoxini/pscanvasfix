@@ -27,5 +27,5 @@
 
 LSPosed 中启用本模块，作用域设为 `com.oplus.pscanvas`，重启目标应用生效。
 
-最新版本：[v1.4-260608](https://github.com/duoxini/pscanvasfix/releases/tag/v1.4-260608)
+最新版本：[v1.4](https://github.com/duoxini/pscanvasfix/releases/tag/v1.4)
 
