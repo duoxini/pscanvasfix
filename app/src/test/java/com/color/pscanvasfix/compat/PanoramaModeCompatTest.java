@@ -21,6 +21,26 @@ public final class PanoramaModeCompatTest {
         assertEquals(1, PanoramaModeCompat.equalColumnWidth(1));
     }
 
+    /**
+     * Landscape three-split uses portrait columns (1113x2400): the 502
+     * equal-width replacement applies. Portrait-device three-split uses
+     * landscape rows (2400x1685) stacked vertically: OEM slots must be
+     * kept, otherwise the 1123-wide replacement letterboxes the task
+     * surfaces (2400x1685) and the apps fail to fill the window.
+     */
+    @Test
+    public void keepsOemLandscapeRowBoundsUntouched() {
+        // Landscape device: 1113 wide x 2400 tall portrait columns -> normalize.
+        assertTrue(PanoramaModeCompat.isPortraitColumn(1113, 2400));
+        assertTrue(PanoramaModeCompat.isPortraitColumn(1600, 2400));
+        assertTrue(PanoramaModeCompat.isPortraitColumn(1685, 2400));
+        // Portrait device: 2400 wide x 1685 tall landscape rows -> keep OEM.
+        assertFalse(PanoramaModeCompat.isPortraitColumn(2400, 1685));
+        assertFalse(PanoramaModeCompat.isPortraitColumn(2400, 1200));
+        // Square edge case: rows win (keep OEM).
+        assertFalse(PanoramaModeCompat.isPortraitColumn(1685, 1685));
+    }
+
     @Test
     public void entersOnlyForThreeAppsInPanoramaLayoutRange() {
         assertTrue(PanoramaModeCompat.shouldEnterFromPinch(3, 3));

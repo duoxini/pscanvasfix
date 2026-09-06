@@ -352,6 +352,14 @@ public final class PsCanvasHooks {
         if (launchBounds == null || launchBounds.height() <= 0) {
             return normalized;
         }
+        // Portrait-device three-split rows are landscape rects (2400x1685);
+        // the OEM vertical-stack bounds are already consistent with the
+        // landscape slot rows. Only portrait columns (height > width, e.g.
+        // 1113x2400 on a landscape device) get the 502 equal-width column.
+        if (!PanoramaModeCompat.isPortraitColumn(
+                launchBounds.width(), launchBounds.height())) {
+            return normalized;
+        }
         int width = PanoramaModeCompat.equalColumnWidth(launchBounds.height());
         Rect columnBounds = new Rect(launchBounds.left, launchBounds.top,
                 launchBounds.left + width, launchBounds.bottom);
@@ -393,6 +401,20 @@ public final class PsCanvasHooks {
                                 }
                                 if (height <= 0 || top == Integer.MAX_VALUE) {
                                     return;
+                                }
+                                // Portrait-device three-split: OEM slots are
+                                // landscape rows (2400x1685) stacked vertically,
+                                // already matching the task bounds. Replacing
+                                // them with equal-width 1123 columns letterboxes
+                                // the 2400x1685 task surfaces. Apply the 502
+                                // wide-canvas replacement only when every slot
+                                // is a portrait column (height > width).
+                                for (Object item : original) {
+                                    Rect rect = (Rect) item;
+                                    if (!PanoramaModeCompat.isPortraitColumn(
+                                            rect.width(), rect.height())) {
+                                        return;
+                                    }
                                 }
                                 float density = ((Number) param.args[2]).floatValue();
                                 int gap = Math.max(1, Math.round(density * 10.0f));
