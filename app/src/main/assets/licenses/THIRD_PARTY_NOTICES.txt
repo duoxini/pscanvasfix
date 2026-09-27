@@ -1,0 +1,18 @@
+PsCanvas Classic - Third-Party Notices
+
+This APK includes or depends at runtime on third-party software. The licenses
+below apply only to the corresponding third-party materials and do not license
+the original PsCanvas Classic code, assets, or documentation.
+
+Licensed under the Apache License, Version 2.0:
+
+- AndroidX and Jetpack libraries, including Activity, Core, Lifecycle,
+  SavedState, Collection, Compose, Material 3, and Graphics Path
+- Kotlin Standard Library, kotlinx.coroutines, and JetBrains annotations
+- libxposed API/service interfaces
+- Guava listenablefuture compatibility artifact
+
+The complete Apache License 2.0 text is included in this APK at:
+assets/licenses/Apache-2.0.txt
+
+Copyright notices remain the property of their respective owners.

@@ -1,105 +1,184 @@
 PsCanvas Classic Source-Available License
-Version 1.0, 2026-09-26
+Version 1.1, 2026-09-27
 
 Copyright (c) 2026 duoxini. All rights reserved.
 
-This License applies only to source code and other materials for which the
-copyright holder owns the relevant rights (the "Covered Materials").
-Third-party components or materials that contain or are accompanied by their
-own license or copyright notice are excluded from the Covered Materials and
-remain governed by their respective terms.
+1. Scope and definitions
 
-The source code and accompanying materials in this repository are made
-publicly visible for inspection, security review, and study only. Public
-availability does not grant an open-source, free-software, or other implied
-license.
+"Official Repository" means:
+https://github.com/duoxini/pscanvasfix
 
-Without prior written authorization, you may only:
+"Official Releases" means the release pages and files published by the
+copyright holder from the Official Repository.
 
-1. view and inspect the source code through the official public repository;
-   and
-2. use GitHub's native Fork function to create and retain a public, unmodified
-   fork within GitHub's fork network, including syncing exact, unmodified
-   copies of upstream changes.
+"Covered Materials" means every portion of the source code, documentation,
+images, project assets, and Official Release files for which the copyright
+holder owns or controls the relevant rights. A Covered Material remains
+covered when it is included in an archive, APK, or other combined file.
 
-The second permission includes only the technical reproduction performed by
-GitHub as part of those native Fork and sync operations. It does not permit
-editing or adding files or commits, cloning or downloading for another
-purpose, compiling, building, executing, publishing releases or packages,
-redistributing outside GitHub's fork network, integrating the materials into
-another project or service, or creating derivative works.
+Third-party software and materials are not Covered Materials. They remain
+subject to their own copyright notices and license terms. The principal
+third-party notices are listed in THIRD_PARTY_NOTICES.md and, for distributed
+APKs, in the packaged license notices.
 
-Except for the narrow viewing, GitHub-native Fork, and verbatim sync
-permissions stated above, or where the copyright holder has given prior
-explicit written authorization, no person or organization may use, reproduce,
-copy, modify, adapt, translate, compile, build, execute, distribute, publish,
-sublicense, sell, commercialize, provide as a service, incorporate into
-another work, or create derivative works from any Covered Materials.
+2. Public availability is not an open-source license
 
-Any authorization must identify the authorized person or organization, the
-permitted purpose, scope, and term. Silence, repository access, a download, an
-issue, a pull request, or a contribution does not constitute authorization.
-Creating a permitted GitHub-native fork grants no rights beyond the narrow
-Fork and sync permission stated above.
+The Covered Materials are publicly visible for online viewing and inspection.
+Public availability does not make them open-source or free software and does
+not grant any implied license.
 
-Rights that a source-hosting platform must receive solely to host, display,
-and technically reproduce this repository under that platform's mandatory
-terms are limited to those platform operations. They do not authorize use of
-the project outside those operations.
+3. Limited permission without prior written authorization
 
-Names, logos, and other project identifiers may not be used without prior
-explicit written authorization.
+Without limiting rights independently and directly granted under GitHub's
+Terms of Service or applicable law, the copyright holder permits only the
+following acts without prior explicit written authorization:
 
-THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+a. viewing and inspecting the Covered Materials through the Official
+   Repository; and
+b. using GitHub's native Fork and sync functions, through the GitHub service,
+   to create and retain a public, unmodified fork inside the Official
+   Repository's GitHub fork network and to sync exact, unmodified upstream
+   content into that fork.
+
+These permissions include only the copies technically necessary for those
+acts. They do not permit modifying the fork, adding files or commits, making
+any clone or download outside the permitted GitHub-native Fork and sync
+operations, compiling, building, installing,
+executing, testing, publishing a release or package, redistributing outside
+GitHub's fork network, integrating into another project, product, or service,
+commercializing, sublicensing, or creating a derivative work.
+
+4. All other rights reserved
+
+Except for Section 3, a separate prior explicit written authorization from the
+copyright holder, or a right that cannot lawfully be restricted, no person or
+organization may use, reproduce, copy, modify, adapt, translate, compile,
+build, install, execute, test, distribute, publish, sublicense, sell,
+commercialize, provide as a service, incorporate into another work, or create
+derivative works from the Covered Materials.
+
+An authorization must identify the authorized person or organization and the
+permitted purpose, scope, and term. Repository access, silence, a download, an
+Issue, a Pull Request, or a contribution is not authorization. A permitted
+GitHub-native fork grants no rights beyond Section 3.
+
+Nothing in this License limits rights granted independently and directly under
+GitHub's Terms of Service or applicable law. Such rights do not create any
+off-platform permission under this License.
+
+5. Project name and marks
+
+This License grants no trademark or branding license. The project name, logo,
+and other identifiers may remain only as an unchanged, inseparable part of a
+fork permitted by Section 3, or may be used for truthful identification where
+applicable law permits. Any other branding, promotional, or source-identifying
+use requires prior explicit written authorization.
+
+6. Termination
+
+The permissions in this License terminate automatically upon breach. Ending
+the breach does not automatically restore them. The copyright holder may
+restore permission in writing.
+
+7. Non-waivable rights
+
+Nothing in this License restricts a right that applicable law does not permit
+the copyright holder to waive or restrict. Any such right applies only to the
+extent required by that law.
+
+8. Disclaimer and limitation of liability
+
+THE COVERED MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF TITLE, MERCHANTABILITY, FITNESS
 FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT
 PERMITTED BY LAW, THE COPYRIGHT HOLDER SHALL NOT BE LIABLE FOR ANY CLAIM,
-DAMAGES, OR OTHER LIABILITY ARISING FROM ACCESS TO OR RELIANCE ON THE
-MATERIALS.
+DAMAGE, OR OTHER LIABILITY ARISING FROM ACCESS TO, USE OF, OR RELIANCE ON THE
+COVERED MATERIALS, WHETHER OR NOT SUCH ACCESS OR USE WAS AUTHORIZED.
 
-For authorization, contact the copyright holder through the repository's
-official contact channel.
+9. Contact and language
+
+Requests for authorization must be made through the Official Repository's
+published contact channel. If the English and Chinese texts differ, the
+English text controls.
 
 ---
 
 PsCanvas Classic 源码公开许可
-版本 1.0，2026-09-26
+版本 1.1，2026-09-27
 
 版权所有 (c) 2026 duoxini。保留所有权利。
 
-本许可仅适用于版权所有者拥有相关权利的源代码及其他材料（以下简称“许可材料”）。
-仓库内明确附有其他许可证或版权声明的第三方组件与材料不属于许可材料，继续适用其各自
-的许可条款。
+1. 适用范围与定义
 
-本仓库源代码及相关材料仅为代码查阅、安全审计和学习研究而公开。源码公开可见不代表
-采用开放源代码许可、自由软件许可，也不产生任何默示授权。
+“官方仓库”是指：
+https://github.com/duoxini/pscanvasfix
 
-未经事先书面授权，仅允许以下行为：
+“官方发布”是指版权所有者通过官方仓库发布的 Release 页面及文件。
 
-1. 通过官方公开仓库查看、审阅源代码；
-2. 使用 GitHub 原生 Fork 功能，在 GitHub 的 Fork 网络内创建并保留公开、未修改的
-   Fork，包括原样同步上游未修改内容。
+“许可材料”是指源代码、文档、图片、项目资源和官方发布文件中，版权所有者拥有或
+控制相关权利的全部内容。许可材料被包含在压缩包、APK 或其他组合文件中时，仍受本
+许可约束。
 
-第 2 项许可仅涵盖 GitHub 在原生 Fork 和同步操作中进行的必要技术复制。该许可不允许
-编辑或新增文件或提交、为其他目的克隆或下载、编译、构建、运行、发布 Release 或
-Package、在 GitHub Fork 网络之外再分发、集成到其他项目或服务，或创作衍生作品。
+第三方软件与材料不属于许可材料，继续适用其各自的版权声明与许可条款。主要第三方
+声明见 THIRD_PARTY_NOTICES.md；随 APK 分发的声明见 APK 内置许可文件。
 
-除上述查看、GitHub 原生 Fork 与原样同步的有限许可外，除非版权所有者事先给予明确
-书面授权，任何个人或组织均不得使用、复制、修改、改编、翻译、编译、构建、运行、
-分发、发布、再许可、销售、商业利用、作为服务提供、合并到其他作品，或基于本仓库
-许可材料创作衍生作品。
+2. 公开可见不等于开放源代码许可
 
-任何授权必须明确被授权的个人或组织、允许的目的、范围和期限。版权所有者未回复、
-能够访问仓库、下载、提交 Issue、Pull Request 或贡献代码，均不构成授权。创建上述
-许可范围内的 GitHub 原生 Fork，不产生超出该 Fork 与原样同步许可的任何权利。
+许可材料仅为在线查看和审阅而公开可见。公开可见不代表采用开放源代码许可或自由
+软件许可，也不产生任何默示授权。
 
-源码托管平台依据其强制条款为托管、展示和技术复制本仓库所必需取得的权利，仅限于
-这些平台操作，不构成对平台操作之外使用本项目的授权。
+3. 未经事先书面授权时的有限许可
 
-未经事先明确书面授权，不得使用本项目名称、Logo 或其他项目标识。
+本许可不限制 GitHub 服务条款或适用法律独立、直接授予的权利。除此之外，未经事先
+明确书面授权，版权所有者仅允许以下行为：
 
-本材料按“现状”提供，不附带任何明示或默示保证，包括但不限于适销性、特定用途适用性
-和不侵权保证。在法律允许的最大范围内，版权所有者不对因访问或依赖本材料产生的任何
-索赔、损害或其他责任负责。
+a. 通过官方仓库查看、审阅许可材料；
+b. 仅通过 GitHub 服务的原生 Fork 与同步功能，在官方仓库的 GitHub Fork 网络内
+   创建并保留公开、未修改的 Fork，以及向其中同步与上游完全一致、未经修改的内容。
 
-如需授权，请通过本仓库公布的官方联系渠道联系版权所有者。
+上述许可仅包括完成这些行为所必需的技术复制，不允许修改 Fork、增加文件或提交、
+在获准的 GitHub 原生 Fork 与同步操作之外进行任何克隆或下载、编译、构建、安装、
+运行、测试、发布 Release 或 Package、
+在 GitHub Fork 网络外再分发、集成到其他项目、产品或服务、商业利用、再许可，或
+创作衍生作品。
+
+4. 保留其他全部权利
+
+除第 3 条、版权所有者事先另行给予的明确书面授权，或法律规定不得限制的权利外，
+任何个人或组织均不得使用、复制、修改、改编、翻译、编译、构建、安装、运行、测试、
+分发、发布、再许可、销售、商业利用、作为服务提供、合并到其他作品，或基于许可材料
+创作衍生作品。
+
+授权必须明确被授权的个人或组织，以及允许的目的、范围和期限。能够访问仓库、版权
+所有者未回复、下载、提交 Issue、Pull Request 或贡献代码，均不构成授权。按第 3 条
+创建 GitHub 原生 Fork，不产生超出该条规定的任何权利。
+
+本许可不限制 GitHub 服务条款或适用法律独立、直接授予的权利。此类权利不产生本
+许可项下任何平台外使用权。
+
+5. 项目名称与标识
+
+本许可不授予商标或品牌使用权。项目名称、Logo 与其他标识仅可作为第 3 条所允许的
+未修改 Fork 中不可分割且保持原样的部分而保留，或在适用法律允许时用于如实指明项目。
+其他品牌、宣传或来源标识用途均须事先取得明确书面授权。
+
+6. 终止
+
+一旦违反本许可，本许可授予的权限自动终止。停止违约行为不会自动恢复权限；版权所有
+者可以书面恢复相关权限。
+
+7. 不可排除的法定权利
+
+本许可不限制适用法律不允许版权所有者放弃或限制的权利。此类权利仅在该法律要求的
+范围内适用。
+
+8. 免责声明与责任限制
+
+许可材料按“现状”提供，不附带任何明示或默示保证，包括所有权、适销性、特定用途
+适用性和不侵权保证。在法律允许的最大范围内，无论访问或使用是否得到授权，版权所有
+者均不对因访问、使用或依赖许可材料产生的任何索赔、损害或其他责任负责。
+
+9. 联系方式与语言
+
+授权申请须通过官方仓库公布的联系渠道提出。英文文本与中文文本不一致时，以英文文本
+为准。

@@ -47,6 +47,6 @@
 
 ## 许可证
 
-本项目公开源码仅允许在线查看，以及在 GitHub Fork 网络内创建并同步公开、未修改的原生 Fork。未经事先明确书面授权，不授予修改、编译、运行、发布、再分发、集成或创作衍生作品的权利。
+本项目公开源码仅允许在线查看，以及在 GitHub Fork 网络内创建并同步公开、未修改的原生 Fork。未经事先明确书面授权，不授予修改、编译、安装、运行、测试、发布、再分发、集成或创作衍生作品的权利。
 
-完整条款见 [PsCanvas Classic Source-Available License](LICENSE)。针对特定 Release 二进制文件的额外授权，仅以对应发布页的明确文字为准。
+完整条款见 [PsCanvas Classic Source-Available License](LICENSE)。该许可同时覆盖版权所有者拥有权利的源码、项目资源及官方 Release 文件；第三方组件继续适用各自的许可，详见 [Third-Party Notices](THIRD_PARTY_NOTICES.md)。针对特定文件的额外授权仅以版权所有者的明确书面文字为准。
