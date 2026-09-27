@@ -41,7 +41,6 @@ open class PsCanvasManagerActivity : ComponentActivity() {
                         coordinator.setAdjustableWindowSize(enabled)
                     },
                     onCopyDiagnostics = ::copyDiagnostics,
-                    onOpenCompatibilityReport = coordinator::openCompatibilityReport,
                 )
             }
         }
@@ -66,7 +65,7 @@ open class PsCanvasManagerActivity : ComponentActivity() {
         clipboard.setPrimaryClip(
             ClipData.newPlainText("PsCanvas Classic diagnostics", coordinator.diagnosticsText()),
         )
-        Toast.makeText(this, "诊断信息已复制", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "基础信息已复制", Toast.LENGTH_SHORT).show()
     }
 
     private companion object {
@@ -74,7 +73,7 @@ open class PsCanvasManagerActivity : ComponentActivity() {
             runtimeState = ModuleRuntimeState.SERVICE_UNAVAILABLE,
             runtimeDetail = "尚未连接到 LSPosed 模块服务",
             compatibilityReadiness = CompatibilityReadiness.UNVERIFIED,
-            compatibilityDetail = "连接模块服务后读取目标版本与能力状态",
+            compatibilityDetail = "连接模块服务后读取运行状态",
         )
     }
 
@@ -94,6 +93,5 @@ open class PsCanvasManagerActivity : ComponentActivity() {
             ),
         )
 
-        override fun openCompatibilityReport() = Unit
     }
 }

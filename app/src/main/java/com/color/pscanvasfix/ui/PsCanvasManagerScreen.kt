@@ -24,7 +24,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -46,7 +45,6 @@ fun PsCanvasManagerScreen(
     state: ManagerUiState,
     onAdjustableWindowSizeChange: (Boolean) -> Unit,
     onCopyDiagnostics: () -> Unit,
-    onOpenCompatibilityReport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -76,7 +74,7 @@ fun PsCanvasManagerScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "经典分屏画布增强模块",
+                        text = "经典分屏画布增强",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -95,7 +93,7 @@ fun PsCanvasManagerScreen(
             Spacer(Modifier.height(8.dp))
 
             FeatureToggleRow(
-                title = "允许调整分屏窗口大小",
+                title = "调整分屏窗口大小",
                 state = state.adjustableWindowSize,
                 onCheckedChange = onAdjustableWindowSizeChange,
             )
@@ -108,22 +106,12 @@ fun PsCanvasManagerScreen(
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
             ) {
-                Text("复制诊断信息")
-            }
-            Spacer(Modifier.height(10.dp))
-            OutlinedButton(
-                onClick = onOpenCompatibilityReport,
-                enabled = state.compatibilityReportAvailable,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-            ) {
-                Text("查看完整兼容报告")
+                Text("复制基础信息")
             }
 
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "设置变更在重启目标组件后生效",
+                text = "设置将在重新打开分屏画布后生效",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -174,17 +162,28 @@ private fun ModuleStatusCard(state: ManagerUiState) {
             )
 
             StatusLine(
-                label = "目标组件",
+                label = "系统组件",
                 value = "com.oplus.pscanvas",
             )
             StatusLine(
-                label = "目标版本",
+                label = "组件版本",
                 value = targetVersionLabel(state.targetVersionName, state.targetVersionCode),
             )
             StatusLine(
-                label = "兼容能力",
+                label = "版本日期",
+                value = state.targetVersionDate ?: "未识别",
+            )
+            StatusLine(
+                label = "验证状态",
                 value = readinessLabel(state.compatibilityReadiness),
             )
+            if (state.verifiedVersionDates.isNotEmpty()) {
+                Text(
+                    text = "已验证版本：${state.verifiedVersionDates.joinToString("、")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
                 text = state.compatibilityDetail,
                 style = MaterialTheme.typography.bodySmall,
@@ -264,23 +263,23 @@ private data class RuntimePresentation(
 
 private fun runtimePresentation(state: ModuleRuntimeState): RuntimePresentation = when (state) {
     ModuleRuntimeState.SERVICE_UNAVAILABLE -> RuntimePresentation(
-        label = "服务不可用",
-        detail = "尚未连接到 LSPosed 模块服务",
+        label = "LSPosed 服务未连接",
+        detail = "请确认已在 LSPosed 中启用模块",
         color = { MaterialTheme.colorScheme.error },
     )
     ModuleRuntimeState.TARGET_WAITING_RESTART -> RuntimePresentation(
-        label = "等待目标组件重启",
-        detail = "模块配置已就绪，将在目标组件下次启动时加载",
+        label = "等待多窗口启动",
+        detail = "设置会在下次打开系统多窗口时加载",
         color = { MaterialTheme.colorScheme.tertiary },
     )
     ModuleRuntimeState.ACTIVE -> RuntimePresentation(
-        label = "已激活",
-        detail = "已收到当前目标进程的模块状态",
+        label = "运行正常",
+        detail = "模块已在系统多窗口中生效",
         color = { MaterialTheme.colorScheme.primary },
     )
     ModuleRuntimeState.STALE -> RuntimePresentation(
-        label = "状态已过期",
-        detail = "当前信息来自旧的目标进程，请重启目标组件刷新",
+        label = "需要重新打开多窗口",
+        detail = "当前信息来自旧进程，重新打开后即可刷新",
         color = { MaterialTheme.colorScheme.outline },
     )
 }
@@ -293,8 +292,8 @@ private fun targetVersionLabel(versionName: String?, versionCode: Long?): String
 }
 
 private fun readinessLabel(readiness: CompatibilityReadiness): String = when (readiness) {
-    CompatibilityReadiness.READY -> "READY"
-    CompatibilityReadiness.PARTIAL -> "PARTIAL"
-    CompatibilityReadiness.UNAVAILABLE -> "UNAVAILABLE"
-    CompatibilityReadiness.UNVERIFIED -> "UNVERIFIED"
+    CompatibilityReadiness.READY -> "已验证"
+    CompatibilityReadiness.PARTIAL -> "部分验证"
+    CompatibilityReadiness.UNAVAILABLE -> "未识别"
+    CompatibilityReadiness.UNVERIFIED -> "未验证"
 }

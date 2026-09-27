@@ -2,7 +2,7 @@ package com.color.pscanvasfix.diagnostic
 
 /** Stable, line-oriented diagnostics intended for clipboard and bug-report use. */
 object DiagnosticsFormatter {
-    private const val SCHEMA_VERSION = 1
+    private const val SCHEMA_VERSION = 2
 
     @JvmStatic
     fun format(snapshot: DiagnosticsSnapshot): String = buildString {
@@ -14,7 +14,9 @@ object DiagnosticsFormatter {
         appendLine("target.package=${snapshot.targetPackage.asValue()}")
         appendLine("target.version=${snapshot.targetVersionName.asValue()}")
         appendLine("target.versionCode=${snapshot.targetVersionCode?.toString().asValue()}")
-        appendLine("compatibility=${snapshot.compatibilityReadiness.name}")
+        appendLine("target.versionDate=${snapshot.targetVersionDate.asValue()}")
+        appendLine("target.verification=${snapshot.compatibilityReadiness.name}")
+        appendLine("logs=LSPosed module log / Android tag PsCanvasFix")
 
         snapshot.features
             .sortedBy { it.key }

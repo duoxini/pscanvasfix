@@ -14,7 +14,7 @@ enum class ModuleRuntimeState {
     STALE,
 }
 
-/** Aggregate result of the capability resolver. */
+/** Verification state for the installed target build; this does not gate feature installation. */
 enum class CompatibilityReadiness {
     READY,
     PARTIAL,
@@ -64,6 +64,7 @@ data class DiagnosticsSnapshot(
     val targetPackage: String = "com.oplus.pscanvas",
     val targetVersionName: String? = null,
     val targetVersionCode: Long? = null,
+    val targetVersionDate: String? = null,
     val compatibilityReadiness: CompatibilityReadiness,
     val capabilities: List<CapabilityDiagnostic> = emptyList(),
     val features: List<FeatureDiagnostic> = emptyList(),

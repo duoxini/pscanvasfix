@@ -2,7 +2,10 @@ package com.color.pscanvasfix.hook;
 
 import org.junit.Test;
 
+import java.util.List;
+
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 public final class ApkFingerprintTest {
 
@@ -27,5 +30,10 @@ public final class ApkFingerprintTest {
                 ApkFingerprint.generationOf(
                         "1cbf75ee66565ba4eb2e78c360243bc97d7e13379595f94914af5b25c7a77fe3"));
         assertEquals("unknown", ApkFingerprint.generationOf("deadbeef"));
+        assertEquals("260608", ApkFingerprint.versionDateOf(
+                "1cbf75ee66565ba4eb2e78c360243bc97d7e13379595f94914af5b25c7a77fe3"));
+        assertNull(ApkFingerprint.versionDateOf("deadbeef"));
+        assertEquals(List.of("251215", "260403", "260512", "260608"),
+                ApkFingerprint.verifiedVersionDates());
     }
 }

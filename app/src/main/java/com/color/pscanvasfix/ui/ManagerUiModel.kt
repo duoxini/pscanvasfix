@@ -46,6 +46,8 @@ data class ManagerUiState(
     val runtimeDetail: String? = null,
     val targetVersionName: String? = null,
     val targetVersionCode: Long? = null,
+    val targetVersionDate: String? = null,
+    val verifiedVersionDates: List<String> = emptyList(),
     val compatibilityReadiness: CompatibilityReadiness = CompatibilityReadiness.UNVERIFIED,
     val compatibilityDetail: String = "能力尚未验证",
     val adjustableWindowSize: FeatureToggleUiState = FeatureToggleUiState(
@@ -57,7 +59,6 @@ data class ManagerUiState(
         unavailableSummary = "四任务产品实现已停止",
     ),
     val diagnosticsAvailable: Boolean = true,
-    val compatibilityReportAvailable: Boolean = false,
 )
 
 /**
@@ -74,8 +75,6 @@ interface ManagerUiCoordinator {
     fun setFourTaskCanvas(enabled: Boolean)
 
     fun diagnosticsText(): String
-
-    fun openCompatibilityReport()
 }
 
 /** Implement this on the Application when the service-backed coordinator is ready. */

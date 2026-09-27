@@ -11,17 +11,28 @@ import java.nio.file.Paths;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Keeps paused Four Task research internal while Resize remains the visible product entry. */
+/** Keeps archived Four Task research internal while the release page stays concise. */
 public final class PsCanvasManagerScreenVisibilityContractTest {
 
     @Test
     public void showsResizeAndHidesFourTaskProductEntry() throws IOException {
         String screen = source("ui/PsCanvasManagerScreen.kt");
         String model = source("ui/ManagerUiModel.kt");
+        String coordinator = source("module/ServiceBackedManagerCoordinator.kt");
         String preferences = source("config/ModulePreferences.java");
 
-        assertTrue(screen.contains("允许调整分屏窗口大小"));
+        assertTrue(screen.contains("调整分屏窗口大小"));
+        assertTrue(screen.contains("已验证版本"));
+        assertTrue(screen.contains("验证状态"));
+        assertTrue(screen.contains("复制基础信息"));
+        assertFalse(screen.contains("查看完整兼容报告"));
         assertFalse(screen.contains("允许四窗口画布"));
+        assertTrue(coordinator.contains("PackageManager.GET_META_DATA"));
+        assertTrue(coordinator.contains("VERSION_DATE_META_DATA = \"versionDate\""));
+        assertTrue(coordinator.contains("target.versionDate in verifiedVersionDates"));
+        assertTrue(
+                coordinator.indexOf("private val targetIdentity")
+                        < coordinator.indexOf("private var state = buildState"));
 
         assertTrue(model.contains("val fourTaskCanvas: FeatureToggleUiState"));
         assertTrue(preferences.contains("KEY_FOUR_TASK_CANVAS"));

@@ -5,14 +5,11 @@ import com.color.pscanvasfix.BuildConfig
 import com.color.pscanvasfix.config.ModulePreferences
 import com.color.pscanvasfix.core.CapabilitySet
 import com.color.pscanvasfix.core.FeatureManager
-import com.color.pscanvasfix.diagnostic.CapabilityDiagnostic
 import com.color.pscanvasfix.diagnostic.CompatibilityReadiness
-import com.color.pscanvasfix.diagnostic.DiagnosticCapabilityState
-import com.color.pscanvasfix.diagnostic.DiagnosticFeatureState
 import com.color.pscanvasfix.diagnostic.DiagnosticsFormatter
 import com.color.pscanvasfix.diagnostic.DiagnosticsSnapshot
-import com.color.pscanvasfix.diagnostic.FeatureDiagnostic
 import com.color.pscanvasfix.diagnostic.ModuleRuntimeState
+import com.color.pscanvasfix.hook.ApkFingerprint
 import com.color.pscanvasfix.ui.FeatureAvailability
 import com.color.pscanvasfix.ui.FeatureToggleUiState
 import com.color.pscanvasfix.ui.ManagerUiCoordinator
@@ -26,6 +23,11 @@ class ServiceBackedManagerCoordinator(
     private val application: PsCanvasApplication,
 ) : ManagerUiCoordinator {
     private val observers = CopyOnWriteArrayList<(ManagerUiState) -> Unit>()
+
+    @Suppress("DEPRECATION")
+    private val targetIdentity: TargetIdentity? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        readTargetIdentity()
+    }
 
     @Volatile
     private var state = buildState(application.currentService())
@@ -60,8 +62,6 @@ class ServiceBackedManagerCoordinator(
         DiagnosticsFormatter::format,
     )
 
-    override fun openCompatibilityReport() = Unit
-
     private fun writePreference(key: String, enabled: Boolean) {
         val service = application.currentService() ?: return
         runCatching {
@@ -75,7 +75,7 @@ class ServiceBackedManagerCoordinator(
     }
 
     private fun buildState(service: XposedService?): ManagerUiState {
-        val target = readTargetVersion()
+        val target = targetIdentity
         val preferences = runCatching {
             service?.getRemotePreferences(ModulePreferences.PREFERENCES_NAME)
         }.getOrNull()
@@ -86,20 +86,32 @@ class ServiceBackedManagerCoordinator(
         )
         val manager = FeatureManager(snapshot, capabilities)
         val runtime = runtimeState(service)
+        val verifiedVersionDates = ApkFingerprint.verifiedVersionDates()
 
+        val readiness = when {
+            target == null -> CompatibilityReadiness.UNAVAILABLE
+            target.versionDate in verifiedVersionDates -> CompatibilityReadiness.READY
+            else -> CompatibilityReadiness.UNVERIFIED
+        }
         return ManagerUiState(
             runtimeState = runtime.state,
             runtimeDetail = runtime.detail,
-            targetVersionName = target?.first,
-            targetVersionCode = target?.second,
-            compatibilityReadiness = CompatibilityReadiness.READY,
-            compatibilityDetail = "二/三分屏 Resize、保存记忆与重复保存已验证",
+            targetVersionName = target?.versionName,
+            targetVersionCode = target?.versionCode,
+            targetVersionDate = target?.versionDate,
+            verifiedVersionDates = verifiedVersionDates,
+            compatibilityReadiness = readiness,
+            compatibilityDetail = when (readiness) {
+                CompatibilityReadiness.READY -> "当前版本已验证，功能仍按组件结构自动适配"
+                CompatibilityReadiness.UNAVAILABLE -> "未找到系统多窗口组件"
+                else -> "未列入验证记录，功能仍会自动检测"
+            },
             adjustableWindowSize = featureState(
                 preferenceEnabled = snapshot.adjustableWindowSizeEnabled(),
                 status = manager.status(FeatureManager.Feature.ADJUSTABLE_WINDOW_SIZE),
                 capability = capabilities.adjustableWindowSize(),
-                availableSummary = "二/三分屏尺寸调整、记忆与重复保存",
-                unavailableSummary = "当前目标缺少保存恢复结构能力",
+                availableSummary = "支持二、三分屏调整，并记住已保存的窗口布局",
+                unavailableSummary = "当前版本暂不支持窗口布局记忆",
                 writable = preferences != null,
             ),
             fourTaskCanvas = featureState(
@@ -110,7 +122,6 @@ class ServiceBackedManagerCoordinator(
                 unavailableSummary = "四任务产品实现已停止",
                 writable = preferences != null,
             ),
-            compatibilityReportAvailable = false,
         )
     }
 
@@ -134,15 +145,15 @@ class ServiceBackedManagerCoordinator(
             when {
                 target == null -> RuntimeResult(
                     ModuleRuntimeState.TARGET_WAITING_RESTART,
-                    "目标组件未运行，设置将在下次启动时读取",
+                    "系统多窗口尚未运行，设置会在下次打开时生效",
                 )
                 target.loadedVersionCode == BuildConfig.VERSION_CODE.toLong() -> RuntimeResult(
                     ModuleRuntimeState.ACTIVE,
-                    "当前目标进程已加载此版本模块",
+                    "模块已在系统多窗口中生效",
                 )
                 else -> RuntimeResult(
                     ModuleRuntimeState.STALE,
-                    "目标进程仍加载旧版模块，请重启目标组件",
+                    "系统多窗口仍在使用旧版模块，请重新打开",
                 )
             }
         }.getOrElse {
@@ -154,9 +165,21 @@ class ServiceBackedManagerCoordinator(
     }
 
     @Suppress("DEPRECATION")
-    private fun readTargetVersion(): Pair<String?, Long>? = runCatching {
-        val info = application.packageManager.getPackageInfo(TARGET_PACKAGE, 0)
-        info.versionName to info.longVersionCode
+    private fun readTargetIdentity(): TargetIdentity? = runCatching {
+        val info = application.packageManager.getPackageInfo(
+            TARGET_PACKAGE,
+            PackageManager.GET_META_DATA,
+        )
+        val manifestVersionDate = info.applicationInfo?.metaData
+            ?.getInt(VERSION_DATE_META_DATA, -1)
+            ?.takeIf { it > 0 }
+            ?.toString()
+        TargetIdentity(
+            info.versionName,
+            info.longVersionCode,
+            manifestVersionDate ?: ApkFingerprint.collect(info.applicationInfo?.sourceDir)
+                .versionDate(),
+        )
     }.recoverCatching { throwable ->
         if (throwable is PackageManager.NameNotFoundException) null else throw throwable
     }.getOrNull()
@@ -184,69 +207,29 @@ class ServiceBackedManagerCoordinator(
     )
 
     private fun diagnosticsSnapshot(ui: ManagerUiState): DiagnosticsSnapshot {
-        val snapshot = ModulePreferences.readSnapshot(
-            runCatching {
-                application.currentService()?.getRemotePreferences(
-                    ModulePreferences.PREFERENCES_NAME,
-                )
-            }.getOrNull(),
-        )
         return DiagnosticsSnapshot(
             moduleVersionName = BuildConfig.VERSION_NAME,
             runtimeState = ui.runtimeState,
             targetVersionName = ui.targetVersionName,
             targetVersionCode = ui.targetVersionCode,
+            targetVersionDate = ui.targetVersionDate,
             compatibilityReadiness = ui.compatibilityReadiness,
-            capabilities = listOf(
-                CapabilityDiagnostic(
-                    "adjustable_window_size",
-                    DiagnosticCapabilityState.AVAILABLE,
-                    "Two-task saved-layout contract resolved across supported new fixtures",
-                ),
-                CapabilityDiagnostic(
-                    "four_task_canvas",
-                    DiagnosticCapabilityState.UNVERIFIED,
-                    "Append and WM commit not verified",
-                ),
-            ),
-            features = listOf(
-                featureDiagnostic(
-                    ModulePreferences.KEY_ADJUSTABLE_WINDOW_SIZE,
-                    snapshot.adjustableWindowSizeEnabled(),
-                    capabilityReady = true,
-                ),
-                featureDiagnostic(
-                    ModulePreferences.KEY_FOUR_TASK_CANVAS,
-                    snapshot.fourTaskCanvasEnabled(),
-                    capabilityReady = false,
-                ),
-            ),
         )
     }
-
-    private fun featureDiagnostic(
-        key: String,
-        preferenceEnabled: Boolean,
-        capabilityReady: Boolean,
-    ) = FeatureDiagnostic(
-        key = key,
-        preferenceEnabled = preferenceEnabled,
-        effectiveEnabled = preferenceEnabled && capabilityReady,
-        state = if (!preferenceEnabled) {
-            DiagnosticFeatureState.DISABLED_BY_USER
-        } else if (capabilityReady) {
-            DiagnosticFeatureState.ENABLED
-        } else {
-            DiagnosticFeatureState.UNVERIFIED
-        },
-    )
 
     private data class RuntimeResult(
         val state: ModuleRuntimeState,
         val detail: String,
     )
 
+    private data class TargetIdentity(
+        val versionName: String?,
+        val versionCode: Long,
+        val versionDate: String?,
+    )
+
     private companion object {
         const val TARGET_PACKAGE = "com.oplus.pscanvas"
+        const val VERSION_DATE_META_DATA = "versionDate"
     }
 }

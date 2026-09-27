@@ -41,7 +41,7 @@ public final class PsCanvasModuleContractTest {
                 normalized("app/src/main/resources/META-INF/xposed/java_init.list"));
         assertEquals("com.oplus.pscanvas\n",
                 normalized("app/src/main/resources/META-INF/xposed/scope.list"));
-        assertEquals("minApiVersion=102\ntargetApiVersion=102\nstaticScope=true\n"
+        assertEquals("minApiVersion=102\ntargetApiVersion=102\nstaticScope=false\n"
                         + "exceptionMode=protective\nautoHotReload=false\n",
                 normalized("app/src/main/resources/META-INF/xposed/module.prop"));
 

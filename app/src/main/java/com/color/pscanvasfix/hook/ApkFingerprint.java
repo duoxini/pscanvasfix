@@ -5,6 +5,7 @@ import java.io.FileInputStream;
 import java.security.MessageDigest;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -34,6 +35,8 @@ public final class ApkFingerprint {
 
     /** Known target-APK generations by SHA-256. New builds are appended here. */
     private static final Map<String, String> KNOWN_GENERATION_BY_SHA = createGenerationTable();
+    private static final List<String> VERIFIED_VERSION_DATES =
+            List.of("251215", "260403", "260512", "260608");
 
     private static Map<String, String> createGenerationTable() {
         Map<String, String> table = new HashMap<>();
@@ -59,6 +62,17 @@ public final class ApkFingerprint {
         return known != null ? known : "unknown";
     }
 
+    /** Exact OEM versionDate for a known APK, or {@code null} for an unknown build. */
+    public static String versionDateOf(String sha) {
+        String generation = generationOf(sha);
+        return "unknown".equals(generation) ? null : generation.substring(0, 6);
+    }
+
+    /** Builds covered by the checked-in offline compatibility regression. */
+    public static List<String> verifiedVersionDates() {
+        return VERIFIED_VERSION_DATES;
+    }
+
     /** Diagnostic info for one installed APK. */
     public static final class ApkInfo {
         public final String apkPath;
@@ -74,6 +88,10 @@ public final class ApkFingerprint {
         /** Known generation label + role, or {@code unknown} when not in the table. */
         public String generation() {
             return generationOf(sha256);
+        }
+
+        public String versionDate() {
+            return versionDateOf(sha256);
         }
 
         public String brief() {

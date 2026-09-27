@@ -15,6 +15,7 @@ public class DiagnosticsFormatterTest {
                 "com.oplus.pscanvas",
                 "2.0.0",
                 20L,
+                "260608",
                 CompatibilityReadiness.PARTIAL,
                 List.of(
                         new CapabilityDiagnostic(
@@ -39,14 +40,16 @@ public class DiagnosticsFormatterTest {
 
         String expected = String.join("\n",
                 "PsCanvas Classic diagnostics",
-                "schema=1",
+                "schema=2",
                 "module.package=com.color.pscanvasfix",
                 "module.version=1.4",
                 "runtime.state=ACTIVE",
                 "target.package=com.oplus.pscanvas",
                 "target.version=2.0.0",
                 "target.versionCode=20",
-                "compatibility=PARTIAL",
+                "target.versionDate=260608",
+                "target.verification=PARTIAL",
+                "logs=LSPosed module log / Android tag PsCanvasFix",
                 "feature.adjustable_window_size.preference=true",
                 "feature.adjustable_window_size.effective=false",
                 "feature.adjustable_window_size.state=DISABLED_CAPABILITY_MISSING",
