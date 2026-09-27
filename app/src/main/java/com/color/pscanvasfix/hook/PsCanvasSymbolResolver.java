@@ -26,7 +26,7 @@ import java.util.Map;
  * <p>Resolution is authoritative and unambiguous for {@code SSTO_FLEXIBLE}
  * (its {@code (ScaleGestureDetector,int)} + {@code (Context,ContainerView,
  * DraggableCanvasViewGroup)} signatures are stable across generations). The three
- * remaining role groups have no signature as distinctive, so they are resolved
+ * remaining legacy role groups have no signature as distinctive, so they are resolved
  * primarily through the cross-generation known-symbol table and validated by
  * presence + a minimal structural check; structural scoring still runs as a
  * fallback when no known-symbol name survives.</p>
@@ -102,9 +102,18 @@ public final class PsCanvasSymbolResolver {
         List<String> claimed = new ArrayList<>();
 
         resolveSstoFlexible(result, candidates, claimed);
+        // Resolve the exact manager contract before the weak legacy proxy roles
+        // so a boolean-rich manager can never be claimed as an animation class.
+        resolvePanoramaManager(result, candidates, claimed);
         resolveThreeSplitAnim(result, candidates, claimed);
         resolveThreeSplitDrag(result, candidates, claimed);
         resolveCanvasController(result, candidates, claimed);
+        SavedSplitLayoutSymbolResolver.resolveInto(result, dexClasses);
+        ThreeTaskResizeSymbolResolver.resolveInto(result, dexClasses);
+        // Independent debug-only P4 trace contract. It scans the exact stable
+        // view/API classes plus dynamically derived adapter/controller classes;
+        // it does not claim or broaden CANVAS_CONTROLLER.
+        P4TraceSymbolResolver.resolveInto(result, dexClasses);
         return result;
     }
 
@@ -213,7 +222,7 @@ public final class PsCanvasSymbolResolver {
     }
 
     // ------------------------------------------------------------------
-    // THREE_SPLIT_ANIM / DRAG / CANVAS_CONTROLLER
+    // THREE_SPLIT_ANIM / DRAG / PANORAMA_MANAGER / CANVAS_CONTROLLER
     // ------------------------------------------------------------------
 
     private static void resolveThreeSplitAnim(PsCanvasSymbols out,
@@ -239,6 +248,66 @@ public final class PsCanvasSymbolResolver {
         }
         resolveStructuralProxy(symbol, candidates, claimed, DRAG_THRESHOLD,
                 PsCanvasSymbolResolver::dragScore);
+    }
+
+    /**
+     * Resolve the OEM PanoramaModeManager by its stable four-argument
+     * constructor, then validate the complete method contract using narrowly
+     * scoped known-name hints. The constructor must identify exactly one class;
+     * missing or multiple structural hits fail closed.
+     */
+    private static void resolvePanoramaManager(PsCanvasSymbols out,
+                                               Map<String, DexClass> candidates,
+                                               List<String> claimed) {
+        RoleSymbol symbol = out.role(Role.PANORAMA_MANAGER);
+        List<DexClass> structuralMatches = new ArrayList<>();
+        for (DexClass cls : candidates.values()) {
+            if (claimed.contains(cls.name)
+                    || !hasValidSignature(cls, MethodMatcher::isPanoramaManagerConstructor)) {
+                continue;
+            }
+            structuralMatches.add(cls);
+            symbol.addCandidate(cls.name, 50,
+                    Collections.singletonList("panorama-manager-constructor"));
+        }
+
+        if (structuralMatches.isEmpty()) {
+            symbol.status = Status.SKIPPED;
+            symbol.source = Source.NONE;
+            return;
+        }
+        if (structuralMatches.size() != 1) {
+            symbol.status = Status.AMBIGUOUS;
+            symbol.source = Source.STRUCTURAL;
+            return;
+        }
+
+        DexClass manager = structuralMatches.get(0);
+        String active = findUniqueHintedMethod(manager,
+                KnownSymbolHints.panoramaActiveMethods(), MethodMatcher::isNoArgBoolean);
+        String enter = findUniqueHintedMethod(manager,
+                KnownSymbolHints.panoramaEnterMethods(), MethodMatcher::isBooleanVoid);
+        String exit = findUniqueHintedMethod(manager,
+                KnownSymbolHints.panoramaExitMethods(), MethodMatcher::isBooleanVoid);
+        String twoTaskPredicate = findUniqueHintedMethod(manager,
+                KnownSymbolHints.twoTaskPredicateMethods(), MethodMatcher::isNoArgBoolean);
+        if (active == null || enter == null || exit == null || twoTaskPredicate == null) {
+            symbol.className = manager.name;
+            symbol.score = 50;
+            symbol.status = Status.AMBIGUOUS;
+            symbol.source = Source.KNOWN_SYMBOL;
+            return;
+        }
+
+        symbol.className = manager.name;
+        symbol.score = 90;
+        symbol.panoramaActiveMethod = active;
+        symbol.panoramaEnterMethod = enter;
+        symbol.panoramaExitMethod = exit;
+        symbol.twoTaskPredicateMethod = twoTaskPredicate;
+        symbol.status = Status.FALLBACK;
+        symbol.source = Source.KNOWN_SYMBOL;
+        claimed.add(manager.name);
     }
 
     private static void resolveCanvasController(PsCanvasSymbols out,
@@ -316,6 +385,22 @@ public final class PsCanvasSymbolResolver {
             }
         }
         return false;
+    }
+
+    private static String findUniqueHintedMethod(
+            DexClass cls, List<String> methodNames,
+            java.util.function.Predicate<DexMethod> signature) {
+        String resolved = null;
+        for (DexMethod method : cls.methods) {
+            if (!methodNames.contains(method.name) || !signature.test(method)) {
+                continue;
+            }
+            if (resolved != null) {
+                return null;
+            }
+            resolved = method.name;
+        }
+        return resolved;
     }
 
     private interface ScoreFn {

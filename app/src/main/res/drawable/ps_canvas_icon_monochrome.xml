@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A purpose-built small-size silhouette of the three-window PsCanvas mark. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,27H51C54.3,27 57,29.7 57,33V47C57,50.3 54.3,53 51,53H30C26.7,53 24,50.3 24,47V33C24,29.7 26.7,27 30,27ZM30,56H51C54.3,56 57,58.7 57,62V77C57,80.3 54.3,83 51,83H30C26.7,83 24,80.3 24,77V62C24,58.7 26.7,56 30,56ZM64,27H78C81.3,27 84,29.7 84,33V77C84,80.3 81.3,83 78,83H64C60.7,83 58,80.3 58,77V33C58,29.7 60.7,27 64,27Z" />
+</vector>

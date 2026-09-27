@@ -10,22 +10,25 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.color.pscanvasfix.runtime.JavaReflectionBackend;
+import com.color.pscanvasfix.runtime.ReflectionAccess;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /* loaded from: classes2.dex */
 public final class FlexibleTransitionCompat {
+    private static final ReflectionAccess DEFAULT_REFLECTION_ACCESS =
+            new ReflectionAccess(new JavaReflectionBackend());
+    private static volatile ReflectionAccess reflectionAccess = DEFAULT_REFLECTION_ACCESS;
     private static final int FALLBACK_POLL_ATTEMPTS = 10;
     private static final int FINISH_DELAY_MS = 500;
     private static final int FLEXIBLE_ANIMATING_IDLE = -1;
     private static final int FLEXIBLE_VERIFY_INTERVAL_MS = 100;
     private static final int FLEXIBLE_VERIFY_TIMEOUT_MS = 1500;
-    private static final String TAG = "PsCanvasFix";
     private static final int TRANSITION_POLL_ATTEMPTS = 8;
     private static final int TRANSITION_POLL_INTERVAL_MS = 50;
     private static final int WINDOWING_MODE_COMPACT = 100;
@@ -80,7 +83,7 @@ public final class FlexibleTransitionCompat {
             }
         }
         try {
-            Object app = XposedHelpers.callStaticMethod(XposedHelpers.findClass("android.app.ActivityThread", classLoader), "currentApplication", new Object[0]);
+            Object app = reflectionAccess.callStaticMethod(reflectionAccess.findClass("android.app.ActivityThread", classLoader), "currentApplication", new Object[0]);
             if (app instanceof Context) {
                 return (Context) app;
             }
@@ -105,7 +108,7 @@ public final class FlexibleTransitionCompat {
                     Rect fixed = clampRect(source, maxBounds);
                     if (!fixed.equals(source)) {
                         mutable.set(index, fixed);
-                        XposedBridge.log("PsCanvasFix: clamped launch bounds[" + index + "] from " + source + " to " + fixed);
+                        PsCanvasLog.d("clamped launch bounds[" + index + "] from " + source + " to " + fixed);
                     }
                 }
             }
@@ -118,7 +121,7 @@ public final class FlexibleTransitionCompat {
         }
         ArrayList<?> launchList = readLaunchBoundsList(bundle);
         if (launchList == null || launchList.isEmpty()) {
-            XposedBridge.log("PsCanvasFix: launch bounds list missing in calculateFlexibleWindowBounds result");
+            PsCanvasLog.w("launch bounds list missing in calculateFlexibleWindowBounds result");
             return bundle;
         }
         Rect maxBounds = ConfigCompat.getMaxBounds(context.getResources().getConfiguration(), context);
@@ -164,7 +167,7 @@ public final class FlexibleTransitionCompat {
                         launchBounds = normalized;
                         launchBundle.putParcelable("androidx.flexible.LaunchBounds", launchBounds);
                         launchBundle.putFloat("androidx.activity.LaunchScale", referenceScale);
-                        XposedBridge.log(TAG + ": normalized oversized launch bounds to " + launchBounds
+                        PsCanvasLog.d("normalized oversized launch bounds to " + launchBounds
                                 + " scale=" + referenceScale);
                     }
                 }
@@ -213,10 +216,10 @@ public final class FlexibleTransitionCompat {
             return;
         }
         try {
-            XposedHelpers.callMethod(splitPolicy, "U", new Object[0]);
-            XposedBridge.log("PsCanvasFix: reset split-to-flexible blur mask");
+            reflectionAccess.callMethod(splitPolicy, "U", new Object[0]);
+            PsCanvasLog.d("reset split-to-flexible blur mask");
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: resetSplitToFlexibleMask failed: " + throwable);
+            PsCanvasLog.e("resetSplitToFlexibleMask failed:", throwable);
         }
     }
 
@@ -237,7 +240,7 @@ public final class FlexibleTransitionCompat {
         lastZoomTaskIds = extractZoomTargetTaskIds(splitPolicy);
         if (lastZoomTaskIds.length == 0) {
             earlySplitZoomActive.set(false);
-            XposedBridge.log(TAG + ": early split zoom aborted, no embedded tasks");
+            PsCanvasLog.w("early split zoom aborted, no embedded tasks");
             return;
         }
         SplitPolicyCompat.hideCanvasImmediately(splitPolicy);
@@ -254,7 +257,7 @@ public final class FlexibleTransitionCompat {
         if (activity != null) {
             scheduleZoomCanvasDismiss(activity, classLoader);
         }
-        XposedBridge.log(TAG + ": early split zoom at pinch end, tasks=" + taskIdsToString(lastZoomTaskIds));
+        PsCanvasLog.d("early split zoom at pinch end, tasks=" + taskIdsToString(lastZoomTaskIds));
     }
 
     public static Activity getContainerActivity(Object splitPolicy, Context context) {
@@ -272,13 +275,13 @@ public final class FlexibleTransitionCompat {
             if (viewContext == null) {
                 return null;
             }
-            Object activity = XposedHelpers.callMethod(containerView, "Q2", viewContext);
+            Object activity = reflectionAccess.callMethod(containerView, "Q2", viewContext);
             if (activity instanceof Activity) {
                 return (Activity) activity;
             }
             return null;
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": getContainerActivity failed: " + throwable);
+            PsCanvasLog.e("getContainerActivity failed:", throwable);
             return null;
         }
     }
@@ -288,7 +291,7 @@ public final class FlexibleTransitionCompat {
         usedZoomFallback.set(false);
         lastZoomTaskIds = new int[0];
         if (earlySplitZoomActive.get()) {
-            XposedBridge.log("PsCanvasFix: split zoom already started early, skip T()");
+            PsCanvasLog.d("split zoom already started early, skip T()");
             return true;
         }
         if (context == null) {
@@ -304,7 +307,7 @@ public final class FlexibleTransitionCompat {
         lastSplitPolicy = splitPolicy;
         lastZoomTaskIds = extractZoomTargetTaskIds(splitPolicy);
         if (lastZoomTaskIds.length == 0) {
-            XposedBridge.log(TAG + ": split zoom aborted, no embedded tasks");
+            PsCanvasLog.w("split zoom aborted, no embedded tasks");
             return false;
         }
         SplitPolicyCompat.hideCanvasImmediately(splitPolicy);
@@ -322,7 +325,7 @@ public final class FlexibleTransitionCompat {
         }
         lastTransitionSucceeded.set(true);
         usedZoomFallback.set(true);
-        XposedBridge.log("PsCanvasFix: split zoom-only path started for tasks=" + taskIdsToString(lastZoomTaskIds));
+        PsCanvasLog.i("split zoom-only path started for tasks=" + taskIdsToString(lastZoomTaskIds));
         return true;
     }
 
@@ -350,7 +353,7 @@ public final class FlexibleTransitionCompat {
             return;
         }
         if (hasFlexibleLaunchScenario(classLoader, taskId) || isTaskFlexible(classLoader, taskId)) {
-            XposedBridge.log("PsCanvasFix: skip zoom for taskId=" + taskId + " already flexible");
+            PsCanvasLog.d("skip zoom for taskId=" + taskId + " already flexible");
             return;
         }
         Rect maxBounds = ConfigCompat.getMaxBounds(context.getResources().getConfiguration(), context);
@@ -358,10 +361,10 @@ public final class FlexibleTransitionCompat {
         float scale = SplitPolicyCompat.getLaunchScale(entry);
         lastZoomInvokeUptimeMs = SystemClock.uptimeMillis();
         try {
-            XposedHelpers.callStaticMethod(XposedHelpers.findClass("B1.l", context.getClassLoader()), "g", new Object[]{Integer.valueOf(taskId), bounds, Float.valueOf(scale)});
-            XposedBridge.log("PsCanvasFix: zoom taskId=" + taskId + " bounds=" + bounds + " scale=" + scale);
+            reflectionAccess.callStaticMethod(reflectionAccess.findClass("B1.l", context.getClassLoader()), "g", new Object[]{Integer.valueOf(taskId), bounds, Float.valueOf(scale)});
+            PsCanvasLog.d("zoom taskId=" + taskId + " bounds=" + bounds + " scale=" + scale);
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: zoom failed for taskId=" + taskId + ": " + throwable);
+            PsCanvasLog.e("zoom failed for taskId=" + taskId + ":", throwable);
         }
     }
 
@@ -422,7 +425,7 @@ public final class FlexibleTransitionCompat {
             activity.finish();
             SplitPolicyCompat.clearTransitionActive();
             PsCanvasLog.d("502-style finish ContainerActivity");
-            final int taskId = (Integer) XposedHelpers.callMethod(activity, "u0");
+            final int taskId = (Integer) reflectionAccess.callMethod(activity, "u0");
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 if (!AtmCompat.removeTask(classLoader, taskId)) {
                     PsCanvasLog.d("502 finish removeTask skipped taskId=" + taskId);
@@ -435,7 +438,7 @@ public final class FlexibleTransitionCompat {
 
     private static void safeCall(Object target, String methodName, Object... args) {
         try {
-            XposedHelpers.callMethod(target, methodName, args);
+            reflectionAccess.callMethod(target, methodName, args);
         } catch (Throwable throwable) {
             PsCanvasLog.e(methodName + "() failed", throwable);
         }
@@ -459,7 +462,7 @@ public final class FlexibleTransitionCompat {
             return;
         }
         if (!wasLastTransitionSucceeded()) {
-            XposedBridge.log("PsCanvasFix: skip delayed finish, transition not verified");
+            PsCanvasLog.w("skip delayed finish, transition not verified");
         } else if (wasZoomFallbackUsed()) {
             scheduleZoomCanvasDismiss(activity, classLoader);
         } else {
@@ -505,7 +508,7 @@ public final class FlexibleTransitionCompat {
         if (sincePinch >= 300 && sinceLastZoom >= 250 && allZoomTargetsFlexible(classLoader, zoomTaskIds) && areZoomTargetsAnimationIdle(classLoader, zoomTaskIds)) {
             dismissCanvasAfterSettle(activity, classLoader, zoomTaskIds);
         } else if (elapsedMs >= ZOOM_DISMISS_MAX_WAIT_MS) {
-            XposedBridge.log("PsCanvasFix: zoom dismiss timeout after " + elapsedMs + "ms, flexible=" + countFlexibleTasks(classLoader, zoomTaskIds) + "/" + (zoomTaskIds == null ? 0 : zoomTaskIds.length));
+            PsCanvasLog.w("zoom dismiss timeout after " + elapsedMs + "ms, flexible=" + countFlexibleTasks(classLoader, zoomTaskIds) + "/" + (zoomTaskIds == null ? 0 : zoomTaskIds.length));
             dismissCanvasAfterSettle(activity, classLoader, zoomTaskIds);
         } else {
             new Handler(Looper.getMainLooper()).postDelayed(new Runnable() { // from class: com.color.pscanvasfix.compat.FlexibleTransitionCompat$$ExternalSyntheticLambda0
@@ -523,10 +526,10 @@ public final class FlexibleTransitionCompat {
             return;
         }
         earlySplitZoomActive.set(false);
-        int canvasTaskId = (Integer) XposedHelpers.callMethod(activity, "u0");
+        int canvasTaskId = (Integer) reflectionAccess.callMethod(activity, "u0");
         detachEmbeddedTasksFromCanvas(classLoader, zoomTaskIds);
         if (!AtmCompat.removeTask(classLoader, canvasTaskId)) {
-            XposedBridge.log("PsCanvasFix: zoom dismiss removeTask failed, taskId=" + canvasTaskId);
+            PsCanvasLog.w("zoom dismiss removeTask failed, taskId=" + canvasTaskId);
             return;
         }
         if (pinchEndUptimeMs > 0) {
@@ -536,7 +539,7 @@ public final class FlexibleTransitionCompat {
         }
         long sinceLastZoom = lastZoomInvokeUptimeMs > 0 ? SystemClock.uptimeMillis() - lastZoomInvokeUptimeMs : -1L;
         scheduleMaskClearAfterRemove(lastSplitPolicy);
-        XposedBridge.log("PsCanvasFix: removed canvas task after zoom settle pinch+" + sincePinch + "ms lastZoom+" + sinceLastZoom + "ms");
+        PsCanvasLog.i("removed canvas task after zoom settle pinch+" + sincePinch + "ms lastZoom+" + sinceLastZoom + "ms");
     }
 
     private static void detachEmbeddedTasksFromCanvas(ClassLoader classLoader, int[] zoomTaskIds) {
@@ -549,10 +552,10 @@ public final class FlexibleTransitionCompat {
         for (int taskId : taskIds) {
             if (taskId > 0) {
                 try {
-                    XposedHelpers.callStaticMethod(XposedHelpers.findClass("B1.l", classLoader), "p1", new Object[]{Integer.valueOf(taskId)});
-                    XposedBridge.log("PsCanvasFix: X0 detach embedded taskId=" + taskId);
+                    reflectionAccess.callStaticMethod(reflectionAccess.findClass("B1.l", classLoader), "p1", new Object[]{Integer.valueOf(taskId)});
+                    PsCanvasLog.d("X0 detach embedded taskId=" + taskId);
                 } catch (Throwable throwable) {
-                    XposedBridge.log("PsCanvasFix: X0 detach failed taskId=" + taskId + ": " + throwable);
+                    PsCanvasLog.e("X0 detach failed taskId=" + taskId + ":", throwable);
                 }
             }
         }
@@ -606,17 +609,17 @@ public final class FlexibleTransitionCompat {
     private static int readFlexibleAnimatingType(ClassLoader classLoader, int taskId) {
         List<?> appInfos = null;
         try {
-            Object manager = XposedHelpers.callStaticMethod(XposedHelpers.findClass("android.app.OplusActivityTaskManager", classLoader), "getInstance", new Object[0]);
-            appInfos = (List) XposedHelpers.callMethod(manager, "getAllTopAppInfos", new Object[0]);
+            Object manager = reflectionAccess.callStaticMethod(reflectionAccess.findClass("android.app.OplusActivityTaskManager", classLoader), "getInstance", new Object[0]);
+            appInfos = (List) reflectionAccess.callMethod(manager, "getAllTopAppInfos", new Object[0]);
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: readFlexibleAnimatingType failed: " + throwable);
+            PsCanvasLog.e("readFlexibleAnimatingType failed:", throwable);
         }
         if (appInfos == null) {
             return FLEXIBLE_ANIMATING_IDLE;
         }
         for (Object appInfo : appInfos) {
-            if (XposedHelpers.getIntField(appInfo, "taskId") == taskId) {
-                Object extension = XposedHelpers.getObjectField(appInfo, "extension");
+            if (reflectionAccess.getIntField(appInfo, "taskId") == taskId) {
+                Object extension = reflectionAccess.getObjectField(appInfo, "extension");
                 return extension instanceof Bundle ? ((Bundle) extension).getInt("key_flexible_task_animating_type", FLEXIBLE_ANIMATING_IDLE) : FLEXIBLE_ANIMATING_IDLE;
             }
         }
@@ -648,7 +651,7 @@ public final class FlexibleTransitionCompat {
         if (taskIds != null && taskIds.length > 0 && countFlexibleTasks(classLoader, taskIds) > 0) {
             finishContainer(activity);
         } else if (elapsedMs >= FLEXIBLE_VERIFY_TIMEOUT_MS) {
-            XposedBridge.log("PsCanvasFix: flexible tasks not detected after " + elapsedMs + "ms, skip finish to avoid flash to desktop");
+            PsCanvasLog.w("flexible tasks not detected after " + elapsedMs + "ms, skip finish to avoid flash to desktop");
         } else {
             new Handler(Looper.getMainLooper()).postDelayed(new Runnable() { // from class: com.color.pscanvasfix.compat.FlexibleTransitionCompat$$ExternalSyntheticLambda3
                 @Override // java.lang.Runnable
@@ -713,17 +716,17 @@ public final class FlexibleTransitionCompat {
     private static boolean hasFlexibleLaunchScenario(ClassLoader classLoader, int taskId) {
         List<?> appInfos = null;
         try {
-            Object manager = XposedHelpers.callStaticMethod(XposedHelpers.findClass("android.app.OplusActivityTaskManager", classLoader), "getInstance", new Object[0]);
-            appInfos = (List) XposedHelpers.callMethod(manager, "getAllTopAppInfos", new Object[0]);
+            Object manager = reflectionAccess.callStaticMethod(reflectionAccess.findClass("android.app.OplusActivityTaskManager", classLoader), "getInstance", new Object[0]);
+            appInfos = (List) reflectionAccess.callMethod(manager, "getAllTopAppInfos", new Object[0]);
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: hasFlexibleLaunchScenario failed: " + throwable);
+            PsCanvasLog.e("hasFlexibleLaunchScenario failed:", throwable);
         }
         if (appInfos == null) {
             return false;
         }
         for (Object appInfo : appInfos) {
-            if (XposedHelpers.getIntField(appInfo, "taskId") == taskId) {
-                Object extension = XposedHelpers.getObjectField(appInfo, "extension");
+            if (reflectionAccess.getIntField(appInfo, "taskId") == taskId) {
+                Object extension = reflectionAccess.getObjectField(appInfo, "extension");
                 if (extension instanceof Bundle) {
                     return ((Bundle) extension).getInt("launchScenario", 0) == 1;
                 }
@@ -735,7 +738,7 @@ public final class FlexibleTransitionCompat {
 
     private static boolean isTaskFlexible(ClassLoader classLoader, int taskId) {
         for (Object runningTask : AtmCompat.getTasks(classLoader, 20, false)) {
-            if (XposedHelpers.getIntField(runningTask, "taskId") == taskId) {
+            if (reflectionAccess.getIntField(runningTask, "taskId") == taskId) {
                 int windowingMode = readWindowingMode(runningTask);
                 return windowingMode == 100 || windowingMode == WINDOWING_MODE_FREEFORM || windowingMode == WINDOWING_MODE_PINNED;
             }
@@ -746,23 +749,23 @@ public final class FlexibleTransitionCompat {
     private static int readWindowingMode(Object runningTask) {
         Object windowConfiguration;
         try {
-            Object config = XposedHelpers.getObjectField(runningTask, "configuration");
+            Object config = reflectionAccess.getObjectField(runningTask, "configuration");
             if ((config instanceof Configuration) && (windowConfiguration = ConfigCompat.getWindowConfigurationObject((Configuration) config)) != null) {
-                return ((Integer) XposedHelpers.callMethod(windowConfiguration, "getWindowingMode", new Object[0])).intValue();
+                return ((Integer) reflectionAccess.callMethod(windowConfiguration, "getWindowingMode", new Object[0])).intValue();
             }
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: readWindowingMode failed: " + throwable);
+            PsCanvasLog.e("readWindowingMode failed:", throwable);
         }
         return 0;
     }
 
     private static void finishContainer(Activity activity) {
         try {
-            XposedHelpers.callMethod(activity, "E1", true, 0);
+            reflectionAccess.callMethod(activity, "E1", true, 0);
             activity.finish();
-            XposedBridge.log(TAG + ": finish ContainerActivity after flexible verify");
+            PsCanvasLog.i("finish ContainerActivity after flexible verify");
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": finish ContainerActivity failed: " + throwable);
+            PsCanvasLog.e("finish ContainerActivity failed:", throwable);
         }
     }
 
@@ -875,5 +878,13 @@ public final class FlexibleTransitionCompat {
 
     private static boolean isValid(Rect rect) {
         return rect != null && rect.width() > 0 && rect.height() > 0;
+    }
+
+    static synchronized void setReflectionAccessForTests(ReflectionAccess access) {
+        reflectionAccess = Objects.requireNonNull(access, "access");
+    }
+
+    static synchronized void resetReflectionAccessForTests() {
+        reflectionAccess = DEFAULT_REFLECTION_ACCESS;
     }
 }

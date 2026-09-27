@@ -20,20 +20,33 @@ public final class MethodMatcher {
     public static final String DESC_SCALE_DETECTOR = "Landroid/view/ScaleGestureDetector;";
     public static final String DESC_INT = "I";
     public static final String DESC_LIST = "Ljava/util/List;";
+    public static final String DESC_OBJECT = "Ljava/lang/Object;";
     public static final String DESC_INT_ARRAY = "[I";
     public static final String DESC_BUNDLE = "Landroid/os/Bundle;";
     public static final String DESC_CONTEXT = "Landroid/content/Context;";
+    public static final String DESC_INTENT = "Landroid/content/Intent;";
     public static final String DESC_CONTAINER_VIEW =
             "Lcom/oplus/pscanvas/canvasmode/canvas/view/ContainerView;";
     public static final String DESC_DRAGGABLE_VIEW_GROUP =
             "Lcom/oplus/pscanvas/canvasmode/canvas/view/DraggableCanvasViewGroup;";
     public static final String DESC_MOTION_EVENT = "Landroid/view/MotionEvent;";
+    public static final String DESC_RECT = "Landroid/graphics/Rect;";
+    public static final String DESC_COMPONENT_NAME = "Landroid/content/ComponentName;";
     public static final String DESC_TRANSACTION = "Landroid/view/SurfaceControl$Transaction;";
     public static final String DESC_SURFACE_CONTROL = "Landroid/view/SurfaceControl;";
     public static final String DESC_EMBEDDED_DECOR =
             "Lcom/oplus/pscanvas/canvasmode/canvas/view/EmbeddedViewDecor;";
     public static final String DESC_FLEXIBLE_TASK_VIEW =
             "Lcom/oplus/flexiblewindow/FlexibleTaskView;";
+    public static final String DESC_FLEXIBLE_TASK_VIEW_LISTENER =
+            "Lcom/oplus/flexiblewindow/FlexibleTaskView$Listener;";
+    public static final String DESC_CONTAINER_ACTIVITY =
+            "Lcom/oplus/pscanvas/canvasmode/canvas/ContainerActivity;";
+    public static final String DESC_HANDLER = "Landroid/os/Handler;";
+    public static final String DESC_VOID = "V";
+    public static final String DESC_BOOLEAN = "Z";
+    public static final String DESC_STRING_ARRAY = "[Ljava/lang/String;";
+    public static final String DESC_BOOLEAN_ARRAY = "[Z";
 
     private MethodMatcher() {
     }
@@ -77,6 +90,142 @@ public final class MethodMatcher {
     public static boolean isSstoFlexibleConstructor(DexMethod method) {
         return "<init>".equals(method.name)
                 && params(method, DESC_CONTEXT, DESC_CONTAINER_VIEW, DESC_DRAGGABLE_VIEW_GROUP);
+    }
+
+    /** Stable constructor of the OEM PanoramaModeManager across all four fixtures. */
+    public static boolean isPanoramaManagerConstructor(DexMethod method) {
+        return "<init>".equals(method.name)
+                && params(method, DESC_DRAGGABLE_VIEW_GROUP, DESC_CONTAINER_VIEW,
+                DESC_CONTAINER_ACTIVITY, DESC_HANDLER)
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact no-argument primitive-boolean method contract. */
+    public static boolean isNoArgBoolean(DexMethod method) {
+        return method.paramDescriptors.isEmpty()
+                && DESC_BOOLEAN.equals(method.returnDescriptor);
+    }
+
+    /** Exact one-boolean-argument void method contract. */
+    public static boolean isBooleanVoid(DexMethod method) {
+        return params(method, DESC_BOOLEAN) && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Stable shortcut-manager constructor. */
+    public static boolean isContextConstructor(DexMethod method) {
+        return "<init>".equals(method.name)
+                && params(method, DESC_CONTEXT)
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** New-generation saved-combination entry carrying the live ContainerView. */
+    public static boolean isSavedLayoutSaveEntry(DexMethod method) {
+        return params(method, DESC_LIST, DESC_INT, DESC_INT, DESC_CONTAINER_VIEW)
+                && DESC_BOOLEAN.equals(method.returnDescriptor);
+    }
+
+    /** Private shortcut builder fed with the resolved package/user arrays. */
+    public static boolean isSavedLayoutShortcutBuild(DexMethod method) {
+        return params(method, DESC_STRING_ARRAY, DESC_INT_ARRAY, DESC_INT, DESC_INT,
+                DESC_BOOLEAN_ARRAY, DESC_BOOLEAN_ARRAY, DESC_LIST)
+                && DESC_BOOLEAN.equals(method.returnDescriptor);
+    }
+
+    /** Existing deterministic shortcut lookup. */
+    public static boolean isSavedLayoutExists(DexMethod method) {
+        return params(method, DESC_LIST) && DESC_BOOLEAN.equals(method.returnDescriptor);
+    }
+
+    /** ContainerActivity's flexible-task restore entry. */
+    public static boolean isBundleBoolean(DexMethod method) {
+        return params(method, DESC_BUNDLE) && DESC_BOOLEAN.equals(method.returnDescriptor);
+    }
+
+    /** Exact ContainerActivity creation callback used to clear process-stale shortcut state. */
+    public static boolean isActivityOnCreate(DexMethod method) {
+        return "onCreate".equals(method.name)
+                && params(method, DESC_BUNDLE)
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact ContainerActivity new-intent callback used to refresh shortcut state. */
+    public static boolean isActivityOnNewIntent(DexMethod method) {
+        return "onNewIntent".equals(method.name)
+                && params(method, DESC_INTENT)
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact P4 controller/adapter method contract: {@code (TaskData) -> void}. */
+    public static boolean isTaskDataVoid(DexMethod method, String taskDataDescriptor) {
+        return taskDataDescriptor != null
+                && params(method, taskDataDescriptor)
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact adapter item accessor contract: {@code (int) -> TaskData}. */
+    public static boolean isTaskDataAtIndex(DexMethod method, String taskDataDescriptor) {
+        return taskDataDescriptor != null
+                && params(method, DESC_INT)
+                && (taskDataDescriptor.equals(method.returnDescriptor)
+                || DESC_OBJECT.equals(method.returnDescriptor));
+    }
+
+    /** Exact no-argument Intent accessor contract. */
+    public static boolean isNoArgIntent(DexMethod method) {
+        return method.paramDescriptors.isEmpty()
+                && DESC_INTENT.equals(method.returnDescriptor);
+    }
+
+    /** Exact no-argument ComponentName accessor contract. */
+    public static boolean isNoArgComponentName(DexMethod method) {
+        return method.paramDescriptors.isEmpty()
+                && DESC_COMPONENT_NAME.equals(method.returnDescriptor);
+    }
+
+    /** Exact P4 controller count contract: {@code () -> int}. */
+    public static boolean isNoArgInt(DexMethod method) {
+        return method.paramDescriptors.isEmpty()
+                && DESC_INT.equals(method.returnDescriptor);
+    }
+
+    /** Exact EmbeddedViewDecor bind observation point. */
+    public static boolean isEmbeddedTaskBind(DexMethod method, String taskDataDescriptor) {
+        return taskDataDescriptor != null
+                && params(method, taskDataDescriptor, DESC_RECT, "F")
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact {@code onAttachedToWindow() -> void} observation point. */
+    public static boolean isOnAttachedToWindow(DexMethod method) {
+        return "onAttachedToWindow".equals(method.name)
+                && method.paramDescriptors.isEmpty()
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact FlexibleTaskView.Listener callback observation point. */
+    public static boolean isOnTaskCreated(DexMethod method) {
+        return "onTaskCreated".equals(method.name)
+                && params(method, DESC_INT, DESC_COMPONENT_NAME)
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact FlexibleTaskView WM-bounds observation point. */
+    public static boolean isFlexibleTaskResize(DexMethod method) {
+        return "resize".equals(method.name)
+                && params(method, DESC_RECT)
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact FlexibleTaskView cleanup observation point. */
+    public static boolean isFlexibleTaskRelease(DexMethod method) {
+        return "release".equals(method.name)
+                && method.paramDescriptors.isEmpty()
+                && DESC_VOID.equals(method.returnDescriptor);
+    }
+
+    /** Exact FlexibleTaskView task identity accessor. */
+    public static boolean isFlexibleTaskId(DexMethod method) {
+        return "getTaskId".equals(method.name) && isNoArgInt(method);
     }
 
     // ---------------------------------------------------------------------

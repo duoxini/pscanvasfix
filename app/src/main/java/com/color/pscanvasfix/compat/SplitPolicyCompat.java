@@ -5,12 +5,13 @@ import android.content.Context;
 import android.graphics.Rect;
 import android.view.SurfaceControl;
 import android.view.View;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.color.pscanvasfix.runtime.JavaReflectionBackend;
+import com.color.pscanvasfix.runtime.ReflectionAccess;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /* loaded from: classes2.dex */
@@ -19,6 +20,9 @@ public final class SplitPolicyCompat {
     private static final String LAUNCH_EMBEDDED_TASK_ID = "androidx.activity.LaunchEmbeddedTaskId";
     private static volatile int[] rememberedEmbeddedTaskIds = new int[0];
     private static final ThreadLocal<Boolean> transitionActive = ThreadLocal.withInitial(() -> false);
+    private static final ReflectionAccess DEFAULT_REFLECTION_ACCESS =
+            new ReflectionAccess(new JavaReflectionBackend());
+    private static volatile ReflectionAccess reflectionAccess = DEFAULT_REFLECTION_ACCESS;
 
     private SplitPolicyCompat() {
     }
@@ -160,16 +164,16 @@ public final class SplitPolicyCompat {
             return taskIds;
         }
         try {
-            embeddedViews = (List) XposedHelpers.callMethod(containerView, "getChildEmbeddedViewList", new Object[0]);
+            embeddedViews = (List) reflectionAccess.callMethod(containerView, "getChildEmbeddedViewList", new Object[0]);
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: getEmbeddedCanvasTaskIds failed: " + throwable);
+            PsCanvasLog.e("getEmbeddedCanvasTaskIds failed:", throwable);
         }
         if (embeddedViews == null) {
             return taskIds;
         }
         for (Object embeddedView : embeddedViews) {
-            if (embeddedView != null && (taskData = XposedHelpers.callMethod(embeddedView, "getTaskData", new Object[0])) != null) {
-                taskIds.add(Integer.valueOf(((Integer) XposedHelpers.callMethod(taskData, "s", new Object[0])).intValue()));
+            if (embeddedView != null && (taskData = reflectionAccess.callMethod(embeddedView, "getTaskData", new Object[0])) != null) {
+                taskIds.add(Integer.valueOf(((Integer) reflectionAccess.callMethod(taskData, "s", new Object[0])).intValue()));
             }
         }
         return taskIds;
@@ -196,7 +200,7 @@ public final class SplitPolicyCompat {
             Context context = findContext(splitPolicy);
             Object containerView = findContainerView(splitPolicy);
             if (context != null && containerView != null) {
-                Object resolved = XposedHelpers.callMethod(containerView, "Q2", context);
+                Object resolved = reflectionAccess.callMethod(containerView, "Q2", context);
                 if (resolved instanceof Activity) {
                     activity = (Activity) resolved;
                 }
@@ -207,9 +211,9 @@ public final class SplitPolicyCompat {
             return 0;
         }
         try {
-            return (Integer) XposedHelpers.callMethod(activity, "u0");
+            return (Integer) reflectionAccess.callMethod(activity, "u0");
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: resolveContainerTaskId failed: " + throwable);
+            PsCanvasLog.e("resolveContainerTaskId failed:", throwable);
             return 0;
         }
     }
@@ -260,7 +264,7 @@ public final class SplitPolicyCompat {
         Object containerView = findContainerView(splitPolicy);
         if (containerView != null) {
             try {
-                List<?> embeddedViews = (List<?>) XposedHelpers.callMethod(
+                List<?> embeddedViews = (List<?>) reflectionAccess.callMethod(
                         containerView, "getChildEmbeddedViewList");
                 if (embeddedViews != null && !embeddedViews.isEmpty()) {
                     return embeddedViews;
@@ -333,7 +337,7 @@ public final class SplitPolicyCompat {
             return null;
         }
         try {
-            int mapped = (Integer) XposedHelpers.callMethod(splitPolicy, "G", index);
+            int mapped = (Integer) reflectionAccess.callMethod(splitPolicy, "G", index);
             if (mapped >= 0 && mapped < decors.size()) {
                 return decors.get(mapped);
             }
@@ -351,7 +355,7 @@ public final class SplitPolicyCompat {
             if (taskId <= 0) {
                 return;
             }
-            Object intent = XposedHelpers.callMethod(splitPolicy, "E", decor);
+            Object intent = reflectionAccess.callMethod(splitPolicy, "E", decor);
             if (intent instanceof android.content.Intent) {
                 ((android.content.Intent) intent).putExtra(LAUNCH_EMBEDDED_TASK_ID, taskId);
             }
@@ -365,11 +369,11 @@ public final class SplitPolicyCompat {
             return 0;
         }
         try {
-            Object taskData = XposedHelpers.callMethod(decor, "getTaskData");
+            Object taskData = reflectionAccess.callMethod(decor, "getTaskData");
             if (taskData == null) {
                 return 0;
             }
-            return ((Integer) XposedHelpers.callMethod(taskData, "s")).intValue();
+            return ((Integer) reflectionAccess.callMethod(taskData, "s")).intValue();
         } catch (Throwable throwable) {
             return 0;
         }
@@ -383,15 +387,15 @@ public final class SplitPolicyCompat {
             return null;
         }
         try {
-            embeddedViews = (List) XposedHelpers.callMethod(containerView, "getChildEmbeddedViewList", new Object[0]);
+            embeddedViews = (List) reflectionAccess.callMethod(containerView, "getChildEmbeddedViewList", new Object[0]);
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: findEmbeddedDecorByTaskId failed: " + throwable);
+            PsCanvasLog.e("findEmbeddedDecorByTaskId failed:", throwable);
         }
         if (embeddedViews == null) {
             return null;
         }
         for (Object embeddedView : embeddedViews) {
-            if (embeddedView != null && (taskData = XposedHelpers.callMethod(embeddedView, "getTaskData", new Object[0])) != null && ((Integer) XposedHelpers.callMethod(taskData, "s", new Object[0])).intValue() == taskId) {
+            if (embeddedView != null && (taskData = reflectionAccess.callMethod(embeddedView, "getTaskData", new Object[0])) != null && ((Integer) reflectionAccess.callMethod(taskData, "s", new Object[0])).intValue() == taskId) {
                 return embeddedView;
             }
         }
@@ -425,7 +429,7 @@ public final class SplitPolicyCompat {
 
     private static boolean isEmbeddedDecorReady(Object decor) {
         try {
-            return ((Boolean) XposedHelpers.callMethod(decor, "getInitialized", new Object[0])).booleanValue();
+            return ((Boolean) reflectionAccess.callMethod(decor, "getInitialized", new Object[0])).booleanValue();
         } catch (Throwable th) {
             return true;
         }
@@ -457,7 +461,7 @@ public final class SplitPolicyCompat {
             return;
         }
         try {
-            List<?> embeddedViews = (List) XposedHelpers.callMethod(containerView, "getChildEmbeddedViewList", new Object[0]);
+            List<?> embeddedViews = (List) reflectionAccess.callMethod(containerView, "getChildEmbeddedViewList", new Object[0]);
             if (embeddedViews == null) {
                 return;
             }
@@ -470,7 +474,7 @@ public final class SplitPolicyCompat {
                 }
             }
         } catch (Throwable throwable) {
-            XposedBridge.log("PsCanvasFix: hideEmbeddedViews failed: " + throwable);
+            PsCanvasLog.e("hideEmbeddedViews failed:", throwable);
         }
     }
 
@@ -480,7 +484,7 @@ public final class SplitPolicyCompat {
             return;
         }
         try {
-            XposedHelpers.callMethod(containerView, "setIsToFlexibleAnimating", new Object[]{false});
+            reflectionAccess.callMethod(containerView, "setIsToFlexibleAnimating", new Object[]{false});
         } catch (Throwable th) {
         }
     }
@@ -496,7 +500,7 @@ public final class SplitPolicyCompat {
                 Rect fixed = clampRect(launchBounds, maxBounds);
                 if (!fixed.equals(launchBounds)) {
                     setLaunchBounds(entry, fixed);
-                    XposedBridge.log("PsCanvasFix: sanitized transition entry bounds from " + launchBounds + " to " + fixed);
+                    PsCanvasLog.d("sanitized transition entry bounds from " + launchBounds + " to " + fixed);
                 }
             }
         }
@@ -506,12 +510,12 @@ public final class SplitPolicyCompat {
         Object decor = getEmbeddedDecor(entry);
         if (decor != null) {
             try {
-                Object taskData = XposedHelpers.callMethod(decor, "getTaskData", new Object[0]);
+                Object taskData = reflectionAccess.callMethod(decor, "getTaskData", new Object[0]);
                 if (taskData != null) {
-                    return ((Integer) XposedHelpers.callMethod(taskData, "s", new Object[0])).intValue();
+                    return ((Integer) reflectionAccess.callMethod(taskData, "s", new Object[0])).intValue();
                 }
             } catch (Throwable throwable) {
-                XposedBridge.log("PsCanvasFix: getTaskId from decor failed: " + throwable);
+                PsCanvasLog.e("getTaskId from decor failed:", throwable);
             }
         }
         Integer taskId = findTaskIdField(entry);
@@ -703,5 +707,13 @@ public final class SplitPolicyCompat {
             }
         }
         return false;
+    }
+
+    static synchronized void setReflectionAccessForTests(ReflectionAccess access) {
+        reflectionAccess = Objects.requireNonNull(access, "access");
+    }
+
+    static synchronized void resetReflectionAccessForTests() {
+        reflectionAccess = DEFAULT_REFLECTION_ACCESS;
     }
 }

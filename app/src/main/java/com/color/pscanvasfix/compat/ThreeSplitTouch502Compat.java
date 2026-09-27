@@ -2,17 +2,79 @@ package com.color.pscanvasfix.compat;
 
 import android.content.Context;
 
-import java.lang.reflect.Field;
+import com.color.pscanvasfix.runtime.JavaReflectionBackend;
+import com.color.pscanvasfix.runtime.ReflectionAccess;
 
-import de.robv.android.xposed.XposedHelpers;
+import java.lang.reflect.Field;
+import java.util.Objects;
 
 /**
  * 502 has no ThreeSplitAnimManager / ThreeSplitDragManager — block 700-only touch shrink/enlarge
  * when canvas is in panorama 3-app layout (orientation 4–7).
  */
 public final class ThreeSplitTouch502Compat {
+    private static final ReflectionAccess DEFAULT_REFLECTION_ACCESS =
+            new ReflectionAccess(new JavaReflectionBackend());
+    private static volatile ReflectionAccess reflectionAccess = DEFAULT_REFLECTION_ACCESS;
 
     private ThreeSplitTouch502Compat() {
+    }
+
+    /**
+     * Fail-closed decision used only by the optional OEM three-task resize path.
+     * Existing boolean compatibility helpers intentionally keep their legacy semantics.
+     */
+    enum ThreeTaskResizeState {
+        NORMAL,
+        BLOCKED,
+        UNKNOWN
+    }
+
+    /**
+     * Resolve all state needed to release the OEM resize hooks as one strict snapshot.
+     * Layout 3 is the equal three-task layout. Layouts 4-7 are also valid normal-canvas
+     * states after OEM resize has enlarged the upper, lower, left, or right task. They are
+     * safe only while the panorama manager explicitly reports inactive. Missing methods,
+     * unexpected return types, and reflection failures stay unknown.
+     */
+    static ThreeTaskResizeState resolveThreeTaskResizeState(Object containerView) {
+        if (containerView == null) {
+            return ThreeTaskResizeState.UNKNOWN;
+        }
+        try {
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
+            if (adapter == null) {
+                return ThreeTaskResizeState.UNKNOWN;
+            }
+            Object rawCount = reflectionAccess.callMethod(adapter, "getCount");
+            if (!(rawCount instanceof Integer)) {
+                return ThreeTaskResizeState.UNKNOWN;
+            }
+            if (((Integer) rawCount).intValue() != 3) {
+                return ThreeTaskResizeState.BLOCKED;
+            }
+            Object rawLayout = reflectionAccess.callMethod(adapter, "n");
+            if (!(rawLayout instanceof Integer)) {
+                return ThreeTaskResizeState.UNKNOWN;
+            }
+            int layout = ((Integer) rawLayout).intValue();
+            if (layout < 3 || layout > 7) {
+                return ThreeTaskResizeState.UNKNOWN;
+            }
+            Object panoramaManager = reflectionAccess.callMethod(
+                    containerView, "getPanoramaModeManager");
+            if (panoramaManager == null) {
+                return ThreeTaskResizeState.UNKNOWN;
+            }
+            Object panoramaActive = reflectionAccess.callMethod(panoramaManager, "M");
+            if (!(panoramaActive instanceof Boolean)) {
+                return ThreeTaskResizeState.UNKNOWN;
+            }
+            return Boolean.TRUE.equals(panoramaActive)
+                    ? ThreeTaskResizeState.BLOCKED : ThreeTaskResizeState.NORMAL;
+        } catch (Throwable ignored) {
+            return ThreeTaskResizeState.UNKNOWN;
+        }
     }
 
     /** True when canvas hosts exactly three apps (502/700 i1()). */
@@ -21,15 +83,15 @@ public final class ThreeSplitTouch502Compat {
             return false;
         }
         try {
-            if (Boolean.TRUE.equals(XposedHelpers.callMethod(containerView, "i1"))) {
+            if (Boolean.TRUE.equals(reflectionAccess.callMethod(containerView, "i1"))) {
                 return true;
             }
         } catch (Throwable ignored) {
         }
         try {
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
             if (adapter != null) {
-                return (Integer) XposedHelpers.callMethod(adapter, "getCount") == 3;
+                return (Integer) reflectionAccess.callMethod(adapter, "getCount") == 3;
             }
         } catch (Throwable ignored) {
         }
@@ -56,11 +118,11 @@ public final class ThreeSplitTouch502Compat {
             return false;
         }
         try {
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
             if (adapter == null) {
                 return false;
             }
-            int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
+            int layout = (Integer) reflectionAccess.callMethod(adapter, "n");
             return layout >= 4 && layout <= 7;
         } catch (Throwable ignored) {
             return false;
@@ -100,7 +162,7 @@ public final class ThreeSplitTouch502Compat {
             return false;
         }
         try {
-            return Boolean.TRUE.equals(XposedHelpers.callMethod(containerView, "V", index, 1));
+            return Boolean.TRUE.equals(reflectionAccess.callMethod(containerView, "V", index, 1));
         } catch (Throwable throwable) {
             PsCanvasLog.e("focusWithPan failed index=" + index, throwable);
             return false;
@@ -135,7 +197,7 @@ public final class ThreeSplitTouch502Compat {
         }
         if (activity != null) {
             try {
-                return XposedHelpers.callMethod(activity, "v0");
+                return reflectionAccess.callMethod(activity, "v0");
             } catch (Throwable ignored) {
             }
         }
@@ -143,11 +205,11 @@ public final class ThreeSplitTouch502Compat {
             Object context = ObfFieldCompat.getObject(gestureOuter,
                     ObfFieldCompat.GESTURE_CONTEXT, "f10950e");
             if (context instanceof Context) {
-                Object resolvedActivity = XposedHelpers.callStaticMethod(
-                        XposedHelpers.findClass("B1.l", context.getClass().getClassLoader()),
+                Object resolvedActivity = reflectionAccess.callStaticMethod(
+                        reflectionAccess.findClass("B1.l", context.getClass().getClassLoader()),
                         "O1", context);
                 if (resolvedActivity != null) {
-                    return XposedHelpers.callMethod(resolvedActivity, "v0");
+                    return reflectionAccess.callMethod(resolvedActivity, "v0");
                 }
             }
         } catch (Throwable ignored) {
@@ -209,7 +271,7 @@ public final class ThreeSplitTouch502Compat {
                     "f10936B", false);
         }
         try {
-            XposedHelpers.callMethod(containerView, "setIsSwitchToZoomAnim", false);
+            reflectionAccess.callMethod(containerView, "setIsSwitchToZoomAnim", false);
         } catch (Throwable ignored) {
         }
         boolean splitFlag = ObfFieldCompat.getGestureSplitEnabled(gestureClass, true);
@@ -238,7 +300,7 @@ public final class ThreeSplitTouch502Compat {
         ObfFieldCompat.setBoolean(gestureOuter, ObfFieldCompat.GESTURE_SCALING,
                 "f10936B", false);
         try {
-            XposedHelpers.callMethod(containerView, "setIsSwitchToZoomAnim", false);
+            reflectionAccess.callMethod(containerView, "setIsSwitchToZoomAnim", false);
         } catch (Throwable ignored) {
         }
         boolean splitFlag = ObfFieldCompat.getGestureSplitEnabled(gestureClass, true);
@@ -285,14 +347,14 @@ public final class ThreeSplitTouch502Compat {
             return null;
         }
         try {
-            Context context = (Context) XposedHelpers.callMethod(adapter, "getContext");
-            Object activity = XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("B1.l", adapter.getClass().getClassLoader()),
+            Context context = (Context) reflectionAccess.callMethod(adapter, "getContext");
+            Object activity = reflectionAccess.callStaticMethod(
+                    reflectionAccess.findClass("B1.l", adapter.getClass().getClassLoader()),
                     "O1", context);
             if (activity == null) {
                 return null;
             }
-            return XposedHelpers.callMethod(activity, "v0");
+            return reflectionAccess.callMethod(activity, "v0");
         } catch (Throwable ignored) {
             return null;
         }
@@ -328,7 +390,7 @@ public final class ThreeSplitTouch502Compat {
             return false;
         }
         try {
-            if (!Boolean.TRUE.equals(XposedHelpers.callMethod(containerView, "G1", index))) {
+            if (!Boolean.TRUE.equals(reflectionAccess.callMethod(containerView, "G1", index))) {
                 return false;
             }
             // 502: single tap in panorama does NOT auto-enlarge.
@@ -347,7 +409,7 @@ public final class ThreeSplitTouch502Compat {
         // Try known field names first
         for (String name : new String[]{"I", "f10736I", "H"}) {
             try {
-                Object val = XposedHelpers.getObjectField(containerView, name);
+                Object val = reflectionAccess.getObjectField(containerView, name);
                 if (val != null && val.getClass().getName().contains("A0")) {
                     return val;
                 }
@@ -371,9 +433,9 @@ public final class ThreeSplitTouch502Compat {
             return;
         }
         try {
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
             if (adapter != null) {
-                XposedHelpers.callMethod(adapter, "H", index);
+                reflectionAccess.callMethod(adapter, "H", index);
             }
         } catch (Throwable throwable) {
             PsCanvasLog.e("focusIndexOnly failed index=" + index, throwable);
@@ -393,10 +455,10 @@ public final class ThreeSplitTouch502Compat {
             return false;
         }
         try {
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
             if (adapter == null) return false;
-            int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
-            int portraitCount = (Integer) XposedHelpers.callMethod(adapter, "i");
+            int layout = (Integer) reflectionAccess.callMethod(adapter, "n");
+            int portraitCount = (Integer) reflectionAccess.callMethod(adapter, "i");
             // Portrait panorama: layout >= 4 (panorama range) with portrait tasks
             return layout >= 4 && layout <= 7 && portraitCount >= 1;
         } catch (Throwable ignored) {
@@ -411,5 +473,13 @@ public final class ThreeSplitTouch502Compat {
      */
     public static boolean isAnyPanoramaMode(Object containerView) {
         return isPanoramaThreeSplit(containerView) || isPortraitPanorama(containerView);
+    }
+
+    static synchronized void setReflectionAccessForTests(ReflectionAccess access) {
+        reflectionAccess = Objects.requireNonNull(access, "access");
+    }
+
+    static synchronized void resetReflectionAccessForTests() {
+        reflectionAccess = DEFAULT_REFLECTION_ACCESS;
     }
 }

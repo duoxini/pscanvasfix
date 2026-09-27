@@ -1,13 +1,16 @@
 package com.color.pscanvasfix.compat;
 
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import com.color.pscanvasfix.runtime.JavaReflectionBackend;
+import com.color.pscanvasfix.runtime.ReflectionAccess;
+import java.util.Objects;
 
 /**
  * Runtime dex uses short obfuscated names (t, B, y...). Jadx shows f14147t etc.
  */
 public final class ObfFieldCompat {
-    private static final String TAG = "PsCanvasFix";
+    private static final ReflectionAccess DEFAULT_REFLECTION_ACCESS =
+            new ReflectionAccess(new JavaReflectionBackend());
+    private static volatile ReflectionAccess reflectionAccess = DEFAULT_REFLECTION_ACCESS;
 
     // x1.r (SStoFlexible)
     public static final String R_INIT = "t";
@@ -54,25 +57,25 @@ public final class ObfFieldCompat {
 
     public static boolean getBoolean(Object target, String primary, String fallback, boolean defaultValue) {
         try {
-            return XposedHelpers.getBooleanField(target, primary);
+            return reflectionAccess.getBooleanField(target, primary);
         } catch (Throwable primaryError) {
             if (fallback != null) {
                 try {
-                    return XposedHelpers.getBooleanField(target, fallback);
+                    return reflectionAccess.getBooleanField(target, fallback);
                 } catch (Throwable ignored) {
                 }
             }
-            XposedBridge.log(TAG + ": getBoolean failed for " + primary + ": " + primaryError);
+            PsCanvasLog.e("getBoolean failed for " + primary + ":", primaryError);
             return defaultValue;
         }
     }
 
     public static void setBoolean(Object target, String primary, String fallback, boolean value) {
         try {
-            XposedHelpers.setBooleanField(target, primary, value);
+            reflectionAccess.setBooleanField(target, primary, value);
         } catch (Throwable primaryError) {
             if (fallback != null) {
-                XposedHelpers.setBooleanField(target, fallback, value);
+                reflectionAccess.setBooleanField(target, fallback, value);
                 return;
             }
             throw primaryError;
@@ -81,10 +84,10 @@ public final class ObfFieldCompat {
 
     public static int getInt(Object target, String primary, String fallback) {
         try {
-            return XposedHelpers.getIntField(target, primary);
+            return reflectionAccess.getIntField(target, primary);
         } catch (Throwable primaryError) {
             if (fallback != null) {
-                return XposedHelpers.getIntField(target, fallback);
+                return reflectionAccess.getIntField(target, fallback);
             }
             throw primaryError;
         }
@@ -92,10 +95,10 @@ public final class ObfFieldCompat {
 
     public static void setInt(Object target, String primary, String fallback, int value) {
         try {
-            XposedHelpers.setIntField(target, primary, value);
+            reflectionAccess.setIntField(target, primary, value);
         } catch (Throwable primaryError) {
             if (fallback != null) {
-                XposedHelpers.setIntField(target, fallback, value);
+                reflectionAccess.setIntField(target, fallback, value);
                 return;
             }
             throw primaryError;
@@ -104,10 +107,10 @@ public final class ObfFieldCompat {
 
     public static float getFloat(Object target, String primary, String fallback) {
         try {
-            return XposedHelpers.getFloatField(target, primary);
+            return reflectionAccess.getFloatField(target, primary);
         } catch (Throwable primaryError) {
             if (fallback != null) {
-                return XposedHelpers.getFloatField(target, fallback);
+                return reflectionAccess.getFloatField(target, fallback);
             }
             throw primaryError;
         }
@@ -115,10 +118,10 @@ public final class ObfFieldCompat {
 
     public static Object getObject(Object target, String primary, String fallback) {
         try {
-            return XposedHelpers.getObjectField(target, primary);
+            return reflectionAccess.getObjectField(target, primary);
         } catch (Throwable primaryError) {
             if (fallback != null) {
-                return XposedHelpers.getObjectField(target, fallback);
+                return reflectionAccess.getObjectField(target, fallback);
             }
             throw primaryError;
         }
@@ -126,10 +129,10 @@ public final class ObfFieldCompat {
 
     public static void setObject(Object target, String primary, String fallback, Object value) {
         try {
-            XposedHelpers.setObjectField(target, primary, value);
+            reflectionAccess.setObjectField(target, primary, value);
         } catch (Throwable primaryError) {
             if (fallback != null) {
-                XposedHelpers.setObjectField(target, fallback, value);
+                reflectionAccess.setObjectField(target, fallback, value);
                 return;
             }
             throw primaryError;
@@ -165,13 +168,13 @@ public final class ObfFieldCompat {
             try {
                 field.setAccessible(true);
                 field.setBoolean(null, value);
-                XposedBridge.log(TAG + ": setGestureSplitEnabled via scan " + field.getName()
+                PsCanvasLog.w("setGestureSplitEnabled via scan " + field.getName()
                         + "=" + value);
                 return;
             } catch (Throwable ignored) {
             }
         }
-        XposedBridge.log(TAG + ": setGestureSplitEnabled failed for " + gestureClass.getName());
+        PsCanvasLog.w("setGestureSplitEnabled failed for " + gestureClass.getName());
     }
 
     public static boolean getGestureSplitEnabled(Class<?> gestureClass, boolean defaultValue) {
@@ -179,7 +182,7 @@ public final class ObfFieldCompat {
             return defaultValue;
         }
         try {
-            return XposedHelpers.getStaticBooleanField(gestureClass, "f10934L");
+            return reflectionAccess.getStaticBooleanField(gestureClass, "f10934L");
         } catch (Throwable ignored) {
         }
         return getStaticBoolean(gestureClass, GESTURE_SPLIT_ENABLED, "f10934L", defaultValue);
@@ -187,7 +190,7 @@ public final class ObfFieldCompat {
 
     private static boolean setStaticBooleanQuiet(Class<?> clazz, String name, boolean value) {
         try {
-            XposedHelpers.setStaticBooleanField(clazz, name, value);
+            reflectionAccess.setStaticBooleanField(clazz, name, value);
             return true;
         } catch (Throwable ignored) {
             return false;
@@ -196,16 +199,24 @@ public final class ObfFieldCompat {
 
     public static boolean getStaticBoolean(Class<?> clazz, String primary, String fallback, boolean defaultValue) {
         try {
-            return XposedHelpers.getStaticBooleanField(clazz, primary);
+            return reflectionAccess.getStaticBooleanField(clazz, primary);
         } catch (Throwable primaryError) {
             if (fallback != null) {
                 try {
-                    return XposedHelpers.getStaticBooleanField(clazz, fallback);
+                    return reflectionAccess.getStaticBooleanField(clazz, fallback);
                 } catch (Throwable ignored) {
                 }
             }
-            XposedBridge.log(TAG + ": getStaticBoolean failed for " + primary + ": " + primaryError);
+            PsCanvasLog.e("getStaticBoolean failed for " + primary + ":", primaryError);
             return defaultValue;
         }
+    }
+
+    static synchronized void setReflectionAccessForTests(ReflectionAccess access) {
+        reflectionAccess = Objects.requireNonNull(access, "access");
+    }
+
+    static synchronized void resetReflectionAccessForTests() {
+        reflectionAccess = DEFAULT_REFLECTION_ACCESS;
     }
 }

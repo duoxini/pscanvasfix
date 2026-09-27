@@ -1,10 +1,14 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 android {
     namespace 'com.color.pscanvasfix'
-    compileSdk 35
+    // libxposed service 102 declares minCompileSdk 37. The installed Android 17
+    // platform uses the new minor-API target hash; targetSdk remains 35.
+    compileSdkVersion 'android-37.0'
 
     defaultConfig {
         applicationId 'com.color.pscanvasfix'
@@ -30,6 +34,15 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
     lint {
         disable 'BlockedPrivateApi'
     }
@@ -49,7 +62,15 @@ android {
 }
 
 dependencies {
-    compileOnly 'de.robv.android.xposed:api:82'
-    compileOnly 'de.robv.android.xposed:api:82:sources'
+    compileOnly 'io.github.libxposed:api:102.0.0'
+    implementation 'io.github.libxposed:service:102.0.0'
+
+    implementation 'androidx.activity:activity-compose:1.9.3'
+    implementation 'androidx.compose.ui:ui:1.7.4'
+    implementation 'androidx.compose.ui:ui-tooling-preview:1.7.4'
+    implementation 'androidx.compose.material3:material3:1.3.0'
+    debugImplementation 'androidx.compose.ui:ui-tooling:1.7.4'
+
+    testImplementation 'io.github.libxposed:api:102.0.0'
     testImplementation 'junit:junit:4.13.2'
 }

@@ -1,16 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <queries>
+        <package android:name="com.oplus.pscanvas" />
+    </queries>
+
     <application
+        android:name=".module.PsCanvasApplication"
         android:allowBackup="false"
-        android:label="分屏画布 502 修复"
+        android:description="@string/app_description"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault">
-        <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data
-            android:name="xposeddescription"
-            android:value="在已适配的新版 com.oplus.pscanvas 上恢复 502 版三分屏与全景交互" />
-        <meta-data android:name="xposedminversion" android:value="93" />
-        <meta-data android:name="xposedscope" android:value="com.oplus.pscanvas" />
+        android:theme="@style/Theme.PsCanvasClassic">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

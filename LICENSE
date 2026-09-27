@@ -1,0 +1,105 @@
+PsCanvas Classic Source-Available License
+Version 1.0, 2026-09-26
+
+Copyright (c) 2026 duoxini. All rights reserved.
+
+This License applies only to source code and other materials for which the
+copyright holder owns the relevant rights (the "Covered Materials").
+Third-party components or materials that contain or are accompanied by their
+own license or copyright notice are excluded from the Covered Materials and
+remain governed by their respective terms.
+
+The source code and accompanying materials in this repository are made
+publicly visible for inspection, security review, and study only. Public
+availability does not grant an open-source, free-software, or other implied
+license.
+
+Without prior written authorization, you may only:
+
+1. view and inspect the source code through the official public repository;
+   and
+2. use GitHub's native Fork function to create and retain a public, unmodified
+   fork within GitHub's fork network, including syncing exact, unmodified
+   copies of upstream changes.
+
+The second permission includes only the technical reproduction performed by
+GitHub as part of those native Fork and sync operations. It does not permit
+editing or adding files or commits, cloning or downloading for another
+purpose, compiling, building, executing, publishing releases or packages,
+redistributing outside GitHub's fork network, integrating the materials into
+another project or service, or creating derivative works.
+
+Except for the narrow viewing, GitHub-native Fork, and verbatim sync
+permissions stated above, or where the copyright holder has given prior
+explicit written authorization, no person or organization may use, reproduce,
+copy, modify, adapt, translate, compile, build, execute, distribute, publish,
+sublicense, sell, commercialize, provide as a service, incorporate into
+another work, or create derivative works from any Covered Materials.
+
+Any authorization must identify the authorized person or organization, the
+permitted purpose, scope, and term. Silence, repository access, a download, an
+issue, a pull request, or a contribution does not constitute authorization.
+Creating a permitted GitHub-native fork grants no rights beyond the narrow
+Fork and sync permission stated above.
+
+Rights that a source-hosting platform must receive solely to host, display,
+and technically reproduce this repository under that platform's mandatory
+terms are limited to those platform operations. They do not authorize use of
+the project outside those operations.
+
+Names, logos, and other project identifiers may not be used without prior
+explicit written authorization.
+
+THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT
+PERMITTED BY LAW, THE COPYRIGHT HOLDER SHALL NOT BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY ARISING FROM ACCESS TO OR RELIANCE ON THE
+MATERIALS.
+
+For authorization, contact the copyright holder through the repository's
+official contact channel.
+
+---
+
+PsCanvas Classic 源码公开许可
+版本 1.0，2026-09-26
+
+版权所有 (c) 2026 duoxini。保留所有权利。
+
+本许可仅适用于版权所有者拥有相关权利的源代码及其他材料（以下简称“许可材料”）。
+仓库内明确附有其他许可证或版权声明的第三方组件与材料不属于许可材料，继续适用其各自
+的许可条款。
+
+本仓库源代码及相关材料仅为代码查阅、安全审计和学习研究而公开。源码公开可见不代表
+采用开放源代码许可、自由软件许可，也不产生任何默示授权。
+
+未经事先书面授权，仅允许以下行为：
+
+1. 通过官方公开仓库查看、审阅源代码；
+2. 使用 GitHub 原生 Fork 功能，在 GitHub 的 Fork 网络内创建并保留公开、未修改的
+   Fork，包括原样同步上游未修改内容。
+
+第 2 项许可仅涵盖 GitHub 在原生 Fork 和同步操作中进行的必要技术复制。该许可不允许
+编辑或新增文件或提交、为其他目的克隆或下载、编译、构建、运行、发布 Release 或
+Package、在 GitHub Fork 网络之外再分发、集成到其他项目或服务，或创作衍生作品。
+
+除上述查看、GitHub 原生 Fork 与原样同步的有限许可外，除非版权所有者事先给予明确
+书面授权，任何个人或组织均不得使用、复制、修改、改编、翻译、编译、构建、运行、
+分发、发布、再许可、销售、商业利用、作为服务提供、合并到其他作品，或基于本仓库
+许可材料创作衍生作品。
+
+任何授权必须明确被授权的个人或组织、允许的目的、范围和期限。版权所有者未回复、
+能够访问仓库、下载、提交 Issue、Pull Request 或贡献代码，均不构成授权。创建上述
+许可范围内的 GitHub 原生 Fork，不产生超出该 Fork 与原样同步许可的任何权利。
+
+源码托管平台依据其强制条款为托管、展示和技术复制本仓库所必需取得的权利，仅限于
+这些平台操作，不构成对平台操作之外使用本项目的授权。
+
+未经事先明确书面授权，不得使用本项目名称、Logo 或其他项目标识。
+
+本材料按“现状”提供，不附带任何明示或默示保证，包括但不限于适销性、特定用途适用性
+和不侵权保证。在法律允许的最大范围内，版权所有者不对因访问或依赖本材料产生的任何
+索赔、损害或其他责任负责。
+
+如需授权，请通过本仓库公布的官方联系渠道联系版权所有者。

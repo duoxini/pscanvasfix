@@ -27,12 +27,16 @@ public final class PsCanvasSymbols {
         NONE
     }
 
-    /** The four role groups the install path currently cares about. */
+    /** The role groups the install path currently cares about. */
     public enum Role {
         SSTO_FLEXIBLE,
         THREE_SPLIT_ANIM,
         THREE_SPLIT_DRAG,
-        CANVAS_CONTROLLER
+        CANVAS_CONTROLLER,
+        PANORAMA_MANAGER,
+        SAVED_SPLIT_LAYOUT,
+        THREE_TASK_RESIZE,
+        P4_TRACE_CHAIN
     }
 
     /** One scored candidate for a role (used for AMBIGUOUS logging). */
@@ -63,6 +67,67 @@ public final class PsCanvasSymbols {
         public String intentListMethod;
         public String launchBoundsMethod;
         public String maskAnimMethod;
+
+        // Resolved PanoramaModeManager contract (nullable). The two-task
+        // capability is usable only when this complete method set is present on
+        // one structurally unique manager class.
+        public String panoramaActiveMethod;
+        public String panoramaEnterMethod;
+        public String panoramaExitMethod;
+        public String twoTaskPredicateMethod;
+
+        // Saved split-layout persistence contract. This role is usable only
+        // when the shortcut manager save/build/exists chain and the
+        // ContainerActivity bundle restore point are all uniquely resolved.
+        public String savedLayoutBuildMethod;
+        public String savedLayoutSaveMethod;
+        public String savedLayoutExistsMethod;
+        public String savedLayoutRestoreClass;
+        public String savedLayoutRestoreMethod;
+        public String savedLayoutActivityCreateMethod;
+        public String savedLayoutActivityNewIntentMethod;
+
+        // Complete OEM three-task resize path. All entries must resolve before
+        // the classic suppression hooks may expose the newer implementation.
+        public String threeTaskResizeSpringClass;
+        public String threeTaskResizeSpringStateClass;
+        public String threeTaskResizeRectUpdateMethod;
+        public String threeTaskResizeScrollStartMethod;
+        public String threeTaskResizeEnlargeMethod;
+        public String threeTaskResizePredicateMethod;
+        public String threeTaskResizeSpringDragMethod;
+        public String threeTaskResizeSpringInitMethod;
+
+        // Debug-only P4 feasibility trace chain. This role is deliberately
+        // independent from CANVAS_CONTROLLER and is not an enablement gate for
+        // any four-window product behavior.
+        public String p4TaskDataDescriptor;
+        public String p4AdapterClass;
+        public String p4EmbeddedViewDecorClass;
+        public String p4TaskCreatedCallbackClass;
+        public String p4FlexibleTaskViewClass;
+        public String p4ControllerAppendMethod;
+        public String p4ControllerRemoveMethod;
+        public String p4ControllerFocusMethod;
+        public String p4ControllerTaskCountMethod;
+        public String p4ControllerContainerField;
+        public String p4ControllerAdapterField;
+        public String p4ContainerAdapterGetter;
+        public String p4ContainerControllerGetter;
+        public String p4ContainerChildrenGetter;
+        public String p4AdapterAddMethod;
+        public String p4AdapterRemoveMethod;
+        public String p4AdapterCountMethod;
+        public String p4AdapterItemMethod;
+        public String p4TaskDataTaskIdMethod;
+        public String p4TaskDataIntentMethod;
+        public String p4EmbeddedBindMethod;
+        public String p4EmbeddedAttachedMethod;
+        public String p4DecorTaskDataField;
+        public String p4TaskCreatedMethod;
+        public String p4FlexibleResizeMethod;
+        public String p4FlexibleReleaseMethod;
+        public String p4FlexibleTaskIdMethod;
 
         RoleSymbol(Role role) {
             this.role = role;
@@ -115,6 +180,18 @@ public final class PsCanvasSymbols {
         }
         if (role(Role.CANVAS_CONTROLLER).available()) {
             out.add("canvasController");
+        }
+        if (role(Role.PANORAMA_MANAGER).available()) {
+            out.add("twoTaskPanorama");
+        }
+        if (role(Role.SAVED_SPLIT_LAYOUT).available()) {
+            out.add("savedSplitLayout");
+        }
+        if (role(Role.THREE_TASK_RESIZE).available()) {
+            out.add("threeTaskResize");
+        }
+        if (role(Role.P4_TRACE_CHAIN).available()) {
+            out.add("p4TraceChain");
         }
         return out;
     }

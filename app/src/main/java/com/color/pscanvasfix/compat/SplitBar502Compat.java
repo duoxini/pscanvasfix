@@ -1,7 +1,11 @@
 package com.color.pscanvasfix.compat;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedHelpers;
+import com.color.pscanvasfix.runtime.JavaReflectionBackend;
+import com.color.pscanvasfix.runtime.ReflectionAccess;
+
+import com.color.pscanvasfix.runtime.HookCall;
+
+import java.util.Objects;
 
 /**
  * Block the 700-only three-split layout and split-bar drag behaviors.
@@ -19,6 +23,9 @@ import de.robv.android.xposed.XposedHelpers;
  * the 700 three-equal-column layout.
  */
 public final class SplitBar502Compat {
+    private static final ReflectionAccess DEFAULT_REFLECTION_ACCESS =
+            new ReflectionAccess(new JavaReflectionBackend());
+    private static volatile ReflectionAccess reflectionAccess = DEFAULT_REFLECTION_ACCESS;
 
     private SplitBar502Compat() {}
 
@@ -29,12 +36,15 @@ public final class SplitBar502Compat {
      * 700 uses this when entering three-split-together mode to recalculate
      * bounds for 3 equal columns. 502 panorama manages this via adapter n().
      */
-    public static void blockF3(XC_MethodHook.MethodHookParam param) {
+    public static void blockF3(HookCall param, boolean allowThreeTaskResize) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+            return;
+        }
         try {
             Object containerView = param.thisObject;
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
             if (adapter != null) {
-                int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
+                int layout = (Integer) reflectionAccess.callMethod(adapter, "n");
                 if (layout >= 4 && layout <= 7) {
                     PsCanvasLog.d("blocked f3 in panorama layout=" + layout);
                     param.setResult(null);
@@ -51,7 +61,10 @@ public final class SplitBar502Compat {
      * Block containerView.E2() — startScrollSplitBarInThreeSplit.
      * 502 has no three-split scroll bar animation. Returns empty list.
      */
-    public static void blockE2Entry(XC_MethodHook.MethodHookParam param) {
+    public static void blockE2Entry(HookCall param, boolean allowThreeTaskResize) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+            return;
+        }
         PsCanvasLog.d("blocked E2 startScrollSplitBarInThreeSplit");
         param.setResult(new java.util.ArrayList());
     }
@@ -61,7 +74,10 @@ public final class SplitBar502Compat {
      * 502 uses ContainerView.V(index, 1) for panorama pan instead of
      * 700's drag-to-enlarge in three-split mode.
      */
-    public static void blockI2(XC_MethodHook.MethodHookParam param) {
+    public static void blockI2(HookCall param, boolean allowThreeTaskResize) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+            return;
+        }
         PsCanvasLog.d("blocked i2 startEnlarge in three-split");
         param.setResult(null);
     }
@@ -74,7 +90,10 @@ public final class SplitBar502Compat {
      * 700's unified spring physics drag. Block entirely so the canvas
      * never enters three-split drag mode.
      */
-    public static void blockEU0(XC_MethodHook.MethodHookParam param) {
+    public static void blockEU0(HookCall param, boolean allowThreeTaskResize) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+            return;
+        }
         PsCanvasLog.d("blocked E.u0 three-split spring drag");
         param.setResult(null);
     }
@@ -84,9 +103,26 @@ public final class SplitBar502Compat {
      * Must be blocked because u0() depends on the SpringAnimation
      * created here (SpringForce with stiffness=0.15, dampingRatio=0.0).
      */
-    public static void blockER(XC_MethodHook.MethodHookParam param) {
+    public static void blockER(HookCall param, boolean allowThreeTaskResize) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+            return;
+        }
         PsCanvasLog.d("blocked E.R spring animation init");
         param.setResult(null);
+    }
+
+    static boolean shouldPreserveOemThreeTaskResize(
+            Object holder, boolean allowThreeTaskResize) {
+        if (!allowThreeTaskResize || holder == null || SplitPolicyCompat.inTransition()) {
+            return false;
+        }
+        // OEM resize changes the adapter from equal layout 3 to one of the discrete
+        // enlarged layouts 4-7. PanoramaManager.M(), rather than that layout number,
+        // distinguishes a real panorama session from a normal resized canvas.
+        Object containerView = holder.getClass().getName().contains("ContainerView")
+                ? holder : ThreeSplitTouch502Compat.findContainerView(holder);
+        return ThreeSplitTouch502Compat.resolveThreeTaskResizeState(containerView)
+                == ThreeSplitTouch502Compat.ThreeTaskResizeState.NORMAL;
     }
 
     // ---- P2: Z-Order + getLaunchRect ----
@@ -97,7 +133,7 @@ public final class SplitBar502Compat {
      * three-split-together mode. 502 only has simple layers 0-2.
      * The actual blocking is done via B1.s.z() hook (always returns false).
      */
-    public static void blockThreeSplitLayerOrder(XC_MethodHook.MethodHookParam param) {
+    public static void blockThreeSplitLayerOrder(HookCall param) {
         PsCanvasLog.d("setLayerOrder: simple branch (three-split-together blocked)");
     }
 
@@ -110,19 +146,19 @@ public final class SplitBar502Compat {
      * NOTE: Uses getTaskData() method (public API) instead of direct field
      * access because jadx field names (f10863i) differ from live dex names.
      */
-    public static void blockPanoramaLaunchRectOverride(XC_MethodHook.MethodHookParam param) {
+    public static void blockPanoramaLaunchRectOverride(HookCall param) {
         try {
             Object decor = param.thisObject;
-            Object parent = XposedHelpers.callMethod(decor, "getParent");
+            Object parent = reflectionAccess.callMethod(decor, "getParent");
             if (parent == null) return;
-            Object adapter = XposedHelpers.callMethod(parent, "getAdapter");
+            Object adapter = reflectionAccess.callMethod(parent, "getAdapter");
             if (adapter == null) return;
-            int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
+            int layout = (Integer) reflectionAccess.callMethod(adapter, "n");
             if (layout >= 4 && layout <= 7) {
                 // Use public getTaskData() method instead of direct field (live dex compat)
-                Object taskData = XposedHelpers.callMethod(decor, "getTaskData");
+                Object taskData = reflectionAccess.callMethod(decor, "getTaskData");
                 if (taskData != null) {
-                    Object normalRect = XposedHelpers.callMethod(taskData, "n");
+                    Object normalRect = reflectionAccess.callMethod(taskData, "n");
                     // Rate-limit: only log first occurrence per layout session
                     param.setResult(normalRect);
                 }
@@ -130,5 +166,13 @@ public final class SplitBar502Compat {
         } catch (Throwable t) {
             PsCanvasLog.e("blockPanoramaLaunchRectOverride failed", t);
         }
+    }
+
+    static synchronized void setReflectionAccessForTests(ReflectionAccess access) {
+        reflectionAccess = Objects.requireNonNull(access, "access");
+    }
+
+    static synchronized void resetReflectionAccessForTests() {
+        reflectionAccess = DEFAULT_REFLECTION_ACCESS;
     }
 }

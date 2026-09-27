@@ -1,12 +1,17 @@
 package com.color.pscanvasfix.compat;
 
-import de.robv.android.xposed.XposedHelpers;
+import com.color.pscanvasfix.runtime.JavaReflectionBackend;
+import com.color.pscanvasfix.runtime.ReflectionAccess;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /* loaded from: classes2.dex */
 public final class AtmCompat {
+    private static final ReflectionAccess DEFAULT_REFLECTION_ACCESS =
+            new ReflectionAccess(new JavaReflectionBackend());
+    private static volatile ReflectionAccess reflectionAccess = DEFAULT_REFLECTION_ACCESS;
     private static volatile Object cachedAtm;
     private static volatile ClassLoader cachedClassLoader;
 
@@ -21,7 +26,7 @@ public final class AtmCompat {
             if (cachedAtm != null && cachedClassLoader == classLoader) {
                 return cachedAtm;
             }
-            Class<?> atmClass = XposedHelpers.findClass("android.app.ActivityTaskManager", classLoader);
+            Class<?> atmClass = reflectionAccess.findClass("android.app.ActivityTaskManager", classLoader);
             Object atm = invokeStaticNoThrow(atmClass, "getInstance");
             if (atm == null) {
                 atm = invokeStaticNoThrow(atmClass, "getService");
@@ -37,7 +42,7 @@ public final class AtmCompat {
         if (atm == null) {
             return Collections.emptyList();
         }
-        Object result = XposedHelpers.callMethod(atm, "getTasks", new Object[]{Integer.valueOf(maxNum), Boolean.valueOf(filterOnlyVisibleRecents)});
+        Object result = reflectionAccess.callMethod(atm, "getTasks", new Object[]{Integer.valueOf(maxNum), Boolean.valueOf(filterOnlyVisibleRecents)});
         return result == null ? Collections.emptyList() : (List) result;
     }
 
@@ -45,10 +50,10 @@ public final class AtmCompat {
         Object atm = getAtm(classLoader);
         if (atm != null) {
             try {
-                Object result = XposedHelpers.callMethod(atm, "getTasks", new Object[]{Integer.valueOf(maxNum)});
+                Object result = reflectionAccess.callMethod(atm, "getTasks", new Object[]{Integer.valueOf(maxNum)});
                 return result == null ? Collections.emptyList() : (List) result;
             } catch (Throwable th) {
-                Object result2 = XposedHelpers.callMethod(atm, "getTasks", new Object[]{Integer.valueOf(maxNum), false});
+                Object result2 = reflectionAccess.callMethod(atm, "getTasks", new Object[]{Integer.valueOf(maxNum), false});
                 return result2 == null ? Collections.emptyList() : (List) result2;
             }
         }
@@ -60,7 +65,7 @@ public final class AtmCompat {
         if (atm == null) {
             return Collections.emptyList();
         }
-        Object result = XposedHelpers.callMethod(atm, "getRecentTasks", new Object[]{Integer.valueOf(maxNum), Integer.valueOf(flags), Integer.valueOf(userId)});
+        Object result = reflectionAccess.callMethod(atm, "getRecentTasks", new Object[]{Integer.valueOf(maxNum), Integer.valueOf(flags), Integer.valueOf(userId)});
         return result == null ? Collections.emptyList() : (List) result;
     }
 
@@ -69,7 +74,7 @@ public final class AtmCompat {
             return false;
         }
         try {
-            Class<?> atmClass = XposedHelpers.findClass("android.app.ActivityTaskManager", classLoader);
+            Class<?> atmClass = reflectionAccess.findClass("android.app.ActivityTaskManager", classLoader);
             Object service = invokeStaticNoThrow(atmClass, "getService");
             if (service == null) {
                 service = getAtm(classLoader);
@@ -77,7 +82,7 @@ public final class AtmCompat {
             if (service == null) {
                 return false;
             }
-            XposedHelpers.callMethod(service, "setFocusedTask", new Object[]{Integer.valueOf(taskId)});
+            reflectionAccess.callMethod(service, "setFocusedTask", new Object[]{Integer.valueOf(taskId)});
             return true;
         } catch (Throwable th) {
             return false;
@@ -89,9 +94,9 @@ public final class AtmCompat {
             return false;
         }
         try {
-            Class<?> managerClass = XposedHelpers.findClass("android.app.OplusActivityTaskManager", classLoader);
-            Object manager = XposedHelpers.callStaticMethod(managerClass, "getInstance", new Object[0]);
-            XposedHelpers.callMethod(manager, "moveTaskToBack", new Object[]{Integer.valueOf(taskId), true});
+            Class<?> managerClass = reflectionAccess.findClass("android.app.OplusActivityTaskManager", classLoader);
+            Object manager = reflectionAccess.callStaticMethod(managerClass, "getInstance", new Object[0]);
+            reflectionAccess.callMethod(manager, "moveTaskToBack", new Object[]{Integer.valueOf(taskId), true});
             return true;
         } catch (Throwable th) {
             return false;
@@ -103,7 +108,7 @@ public final class AtmCompat {
             return false;
         }
         try {
-            Class<?> atmClass = XposedHelpers.findClass("android.app.ActivityTaskManager", classLoader);
+            Class<?> atmClass = reflectionAccess.findClass("android.app.ActivityTaskManager", classLoader);
             Object service = invokeStaticNoThrow(atmClass, "getService");
             if (service == null) {
                 service = getAtm(classLoader);
@@ -111,7 +116,7 @@ public final class AtmCompat {
             if (service == null) {
                 return false;
             }
-            XposedHelpers.callMethod(service, "removeTask", new Object[]{Integer.valueOf(taskId)});
+            reflectionAccess.callMethod(service, "removeTask", new Object[]{Integer.valueOf(taskId)});
             return true;
         } catch (Throwable th) {
             return false;
@@ -126,5 +131,17 @@ public final class AtmCompat {
         } catch (Throwable th) {
             return null;
         }
+    }
+
+    static synchronized void setReflectionAccessForTests(ReflectionAccess access) {
+        reflectionAccess = Objects.requireNonNull(access, "access");
+        cachedAtm = null;
+        cachedClassLoader = null;
+    }
+
+    static synchronized void resetReflectionAccessForTests() {
+        reflectionAccess = DEFAULT_REFLECTION_ACCESS;
+        cachedAtm = null;
+        cachedClassLoader = null;
     }
 }

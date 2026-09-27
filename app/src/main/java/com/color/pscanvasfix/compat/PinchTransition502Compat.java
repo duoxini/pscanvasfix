@@ -5,16 +5,21 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 
+import com.color.pscanvasfix.runtime.JavaReflectionBackend;
+import com.color.pscanvasfix.runtime.ReflectionAccess;
+
 import java.util.ArrayList;
 import java.util.List;
-
-import de.robv.android.xposed.XposedHelpers;
+import java.util.Objects;
 
 /**
  * 502 S1.p pinch-to-flexible core: dummy prepare (I) and layout-aware bounds remap (x).
  */
 public final class PinchTransition502Compat {
     private static final String UTIL = "B1.l";
+    private static final ReflectionAccess DEFAULT_REFLECTION_ACCESS =
+            new ReflectionAccess(new JavaReflectionBackend());
+    private static volatile ReflectionAccess reflectionAccess = DEFAULT_REFLECTION_ACCESS;
 
     private PinchTransition502Compat() {
     }
@@ -33,11 +38,11 @@ public final class PinchTransition502Compat {
             if (containerView == null) {
                 return;
             }
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
             if (adapter == null) {
                 return;
             }
-            int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
+            int layout = (Integer) reflectionAccess.callMethod(adapter, "n");
             ObfFieldCompat.setInt(splitPolicy, ObfFieldCompat.R_LAYOUT_ORIENT, "f14114H", layout);
             PsCanvasLog.d("syncLiveLayoutOrient layout=" + layout);
         } catch (Throwable throwable) {
@@ -54,8 +59,8 @@ public final class PinchTransition502Compat {
                 ArrayList<Rect> launchBounds = new ArrayList<>();
                 launchBounds.add(new Rect());
                 float[] scales = {1.0f};
-                XposedHelpers.callStaticMethod(
-                        XposedHelpers.findClass(UTIL, classLoader),
+                reflectionAccess.callStaticMethod(
+                        reflectionAccess.findClass(UTIL, classLoader),
                         "t0",
                         new int[]{0},
                         launchBounds,
@@ -83,11 +88,11 @@ public final class PinchTransition502Compat {
             if (containerView == null) {
                 return;
             }
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
             if (adapter == null) {
                 return;
             }
-            int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
+            int layout = (Integer) reflectionAccess.callMethod(adapter, "n");
             ObfFieldCompat.setInt(splitPolicy, ObfFieldCompat.R_LAYOUT_ORIENT, "f14114H", layout);
 
             List<Object> masks = (List<Object>) ObfFieldCompat.getObject(
@@ -137,11 +142,11 @@ public final class PinchTransition502Compat {
 
     private static boolean isFirstAdapterItemPeek(Object adapter) {
         try {
-            Object item = XposedHelpers.callMethod(adapter, "getItem", 0);
+            Object item = reflectionAccess.callMethod(adapter, "getItem", 0);
             if (item == null) {
                 return false;
             }
-            return (Boolean) XposedHelpers.callMethod(item, "B");
+            return (Boolean) reflectionAccess.callMethod(item, "B");
         } catch (Throwable throwable) {
             return false;
         }
@@ -164,15 +169,15 @@ public final class PinchTransition502Compat {
             if (containerView == null) {
                 return;
             }
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
-            if (adapter == null || ((Integer) XposedHelpers.callMethod(adapter, "n")) != 4) {
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
+            if (adapter == null || ((Integer) reflectionAccess.callMethod(adapter, "n")) != 4) {
                 return;
             }
-            Rect union = (Rect) XposedHelpers.callMethod(containerView, "getRectListUnion");
+            Rect union = (Rect) reflectionAccess.callMethod(containerView, "getRectListUnion");
             if (union == null || union.width() <= 0 || union.height() <= 0) {
                 return;
             }
-            Rect launchRect = (Rect) XposedHelpers.callMethod(embeddedDecor, "getLaunchRect");
+            Rect launchRect = (Rect) reflectionAccess.callMethod(embeddedDecor, "getLaunchRect");
             if (launchRect == null || launchRect.width() <= 0 || launchRect.height() <= 0) {
                 return;
             }
@@ -187,18 +192,18 @@ public final class PinchTransition502Compat {
                 return;
             }
             Object mask = masks.get(masks.size() - 1);
-            Object maskDecor = XposedHelpers.getObjectField(mask, "f14169f");
+            Object maskDecor = reflectionAccess.getObjectField(mask, "f14169f");
             if (maskDecor != embeddedDecor) {
                 return;
             }
-            Rect animRect = (Rect) XposedHelpers.getObjectField(mask, "f14170g");
+            Rect animRect = (Rect) reflectionAccess.getObjectField(mask, "f14170g");
             if (animRect == null || animRect.width() < union.width() - 32) {
                 return;
             }
             animRect.set(launchRect);
-            Object taskData = XposedHelpers.callMethod(embeddedDecor, "getTaskData");
+            Object taskData = reflectionAccess.callMethod(embeddedDecor, "getTaskData");
             int taskId = taskData != null
-                    ? ((Integer) XposedHelpers.callMethod(taskData, "s")).intValue() : 0;
+                    ? ((Integer) reflectionAccess.callMethod(taskData, "s")).intValue() : 0;
             PsCanvasLog.d("fixPanoramaMaskAnimRect task=" + taskId
                     + " " + union.width() + "x" + union.height()
                     + " -> " + launchRect.width() + "x" + launchRect.height());
@@ -217,6 +222,14 @@ public final class PinchTransition502Compat {
         Object mask = masks.get(maskIndex);
         Object bundle = boundsList.get(bundleIndex);
         Object entry = entries.get(bundleIndex);
-        XposedHelpers.callMethod(splitPolicy, "K", mask, bundle, entry);
+        reflectionAccess.callMethod(splitPolicy, "K", mask, bundle, entry);
+    }
+
+    static synchronized void setReflectionAccessForTests(ReflectionAccess access) {
+        reflectionAccess = Objects.requireNonNull(access, "access");
+    }
+
+    static synchronized void resetReflectionAccessForTests() {
+        reflectionAccess = DEFAULT_REFLECTION_ACCESS;
     }
 }

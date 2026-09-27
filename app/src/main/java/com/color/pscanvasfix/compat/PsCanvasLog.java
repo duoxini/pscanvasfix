@@ -1,32 +1,33 @@
 package com.color.pscanvasfix.compat;
 
-import android.util.Log;
-import de.robv.android.xposed.XposedBridge;
+import com.color.pscanvasfix.runtime.AndroidLogSink;
+import com.color.pscanvasfix.runtime.ModernXposedLogSink;
+import com.color.pscanvasfix.runtime.ModuleLogger;
 
 public final class PsCanvasLog {
     private static final String TAG = "PsCanvasFix";
+    private static final ModuleLogger LOGGER = new ModuleLogger(
+            TAG,
+            new ModernXposedLogSink(),
+            new AndroidLogSink());
 
     private PsCanvasLog() {
     }
 
     public static void d(String message) {
-        XposedBridge.log(TAG + ": " + message);
-        Log.d(TAG, message);
+        LOGGER.d(message);
     }
 
     public static void i(String message) {
-        XposedBridge.log(TAG + ": " + message);
-        Log.i(TAG, message);
+        LOGGER.i(message);
     }
 
     public static void w(String message) {
-        XposedBridge.log(TAG + ": " + message);
-        Log.w(TAG, message);
+        LOGGER.w(message);
     }
 
     public static void e(String message, Throwable throwable) {
-        XposedBridge.log(TAG + ": " + message + " " + throwable);
-        Log.e(TAG, message, throwable);
+        LOGGER.e(message, throwable);
     }
 
     /** Short caller chain for pinch/transition debugging. */

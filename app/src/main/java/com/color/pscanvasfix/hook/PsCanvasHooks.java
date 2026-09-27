@@ -1,6 +1,7 @@
 package com.color.pscanvasfix.hook;
 
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
@@ -23,23 +24,42 @@ import com.color.pscanvasfix.compat.PsCanvasLog;
 import com.color.pscanvasfix.compat.SplitBar502Compat;
 import com.color.pscanvasfix.compat.SplitPolicyCompat;
 import com.color.pscanvasfix.compat.ThreeSplitTouch502Compat;
+import com.color.pscanvasfix.BuildConfig;
+import com.color.pscanvasfix.core.CapabilitySet;
+import com.color.pscanvasfix.core.FeatureManager;
+import com.color.pscanvasfix.feature.ClassicLayoutFeature;
+import com.color.pscanvasfix.feature.ClassicCanvasController;
+import com.color.pscanvasfix.feature.FourTaskTraceFeature;
+import com.color.pscanvasfix.feature.PanoramaFeature;
+import com.color.pscanvasfix.feature.PinchGestureFeature;
+import com.color.pscanvasfix.feature.SplitBarFeature;
+import com.color.pscanvasfix.feature.resize.SavedSplitLayoutFeature;
+import com.color.pscanvasfix.runtime.HookRegistry;
+import com.color.pscanvasfix.runtime.AndroidLogSink;
+import com.color.pscanvasfix.runtime.InstanceStateKeys;
+import com.color.pscanvasfix.runtime.InstanceStateStore;
+import com.color.pscanvasfix.runtime.WeakIdentityInstanceStateBackend;
+import com.color.pscanvasfix.runtime.JavaReflectionBackend;
+import com.color.pscanvasfix.runtime.ModernXposedLogSink;
+import com.color.pscanvasfix.runtime.ModuleLogger;
+import com.color.pscanvasfix.runtime.ReflectionAccess;
 
 import java.io.File;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XC_MethodReplacement;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.callbacks.XC_LoadPackage;
+import com.color.pscanvasfix.runtime.HookCallback;
+import com.color.pscanvasfix.runtime.HookReplacement;
+import com.color.pscanvasfix.runtime.HookCall;
+import com.color.pscanvasfix.runtime.HookRuntime;
+import com.color.pscanvasfix.runtime.PackageLoadContext;
 
 public final class PsCanvasHooks {
     private static final String TAG = "PsCanvasFix";
     private static final String TARGET_PACKAGE = "com.oplus.pscanvas";
-
     // Legacy 260403 symbols. They remain only in unused legacy helpers; the
     // active 260608 installation path is selected through the APK profile.
     private static final String UTIL = "B1.l";
@@ -54,34 +74,50 @@ public final class PsCanvasHooks {
     private static final String ADAPTER = "u1.c";
 
     private interface HookBody {
-        Object run(XC_MethodHook.MethodHookParam param) throws Throwable;
+        Object run(HookCall param) throws Throwable;
     }
 
     private interface HookBefore {
-        void run(XC_MethodHook.MethodHookParam param) throws Throwable;
+        void run(HookCall param) throws Throwable;
     }
 
     private interface HookAfter {
-        void run(XC_MethodHook.MethodHookParam param) throws Throwable;
+        void run(HookCall param) throws Throwable;
     }
 
     private PsCanvasHooks() {
     }
 
     private static volatile boolean deferredHooksInstalled = false;
-    private static volatile boolean equalWidthCanvasLogged = false;
     private static volatile PsCanvasCompatibilityProfile activeProfile;
-    private static final String NEW_THREE_SPLIT_LEFT_ANCHOR =
-            "pscanvasfix_new_three_split_left_anchor";
-    private static final String DIRECT_NEW_THREE_SPLIT_ENTRY =
-            "pscanvasfix_direct_new_three_split_entry";
-    private static final ThreadLocal<Boolean> allowDirectionalPanoramaExit =
-            new ThreadLocal<>();
-
-    public static void install(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static volatile HookRegistry activeHookRegistry = new HookRegistry();
+    private static final InstanceStateStore INSTANCE_STATE_STORE =
+            new InstanceStateStore(new WeakIdentityInstanceStateBackend());
+    private static final ReflectionAccess DEFAULT_REFLECTION_ACCESS =
+            new ReflectionAccess(new JavaReflectionBackend());
+    private static volatile ReflectionAccess reflectionAccess = DEFAULT_REFLECTION_ACCESS;
+    private static volatile HookRuntime hookRuntime;
+    public static void install(PackageLoadContext lpparam, HookRuntime runtime) {
         if (!TARGET_PACKAGE.equals(lpparam.packageName)) {
             return;
         }
+        hookRuntime = Objects.requireNonNull(runtime, "runtime");
+        HookRegistry hookRegistry = new HookRegistry();
+        PinchGestureFeature.declareLifecycleHooks(hookRegistry);
+        PanoramaFeature.declareLaunchGuard(hookRegistry);
+        PinchGestureFeature.declareScaleHook(hookRegistry);
+        ClassicCanvasController.declareTransitionHook(hookRegistry);
+        ClassicLayoutFeature.declareLaunchHook(hookRegistry);
+        PanoramaFeature.declareMaskFix(hookRegistry);
+        PinchGestureFeature.declareTouchHooks(hookRegistry);
+        ClassicCanvasController.declareControllerHook(hookRegistry, "O");
+        PanoramaFeature.declareExitGuard(hookRegistry);
+        ClassicLayoutFeature.declareBoundsAndLayoutHooks(hookRegistry);
+        ClassicCanvasController.declareEntryHooks(hookRegistry,
+                CONTAINER_ACTIVITY, "onCreate", CONTAINER_VIEW, "e3", "R");
+        SplitBarFeature.declareHooks(hookRegistry);
+        SavedSplitLayoutFeature.declareHooks(hookRegistry);
+        activeHookRegistry = hookRegistry;
         String apkPath = lpparam.appInfo == null ? null : lpparam.appInfo.sourceDir;
 
         // SHA-256 is diagnostics only now: it is logged but never gates install().
@@ -96,6 +132,33 @@ public final class PsCanvasHooks {
         PsCanvasLog.i(CapabilityReport.render(
                 apkInfo, PsCanvasSymbolResolver.dexClassCount(), symbols));
 
+        PsCanvasSymbols.RoleSymbol savedLayout =
+                symbols.role(PsCanvasSymbols.Role.SAVED_SPLIT_LAYOUT);
+        PsCanvasSymbols.RoleSymbol threeTaskResize =
+                symbols.role(PsCanvasSymbols.Role.THREE_TASK_RESIZE);
+        CapabilitySet.State savedLayoutCapability =
+                savedLayout.available() && threeTaskResize.available()
+                        ? CapabilitySet.State.READY
+                        : savedLayout.status == PsCanvasSymbols.Status.AMBIGUOUS
+                        || threeTaskResize.status == PsCanvasSymbols.Status.AMBIGUOUS
+                        ? CapabilitySet.State.AMBIGUOUS : CapabilitySet.State.MISSING;
+        FeatureManager featureManager = new FeatureManager(
+                lpparam.preferences, CapabilitySet.of(
+                        savedLayoutCapability, CapabilitySet.State.UNVERIFIED));
+        PsCanvasLog.i("feature adjustable_window_size="
+                + featureManager.status(FeatureManager.Feature.ADJUSTABLE_WINDOW_SIZE)
+                + " four_task_canvas="
+                + featureManager.status(FeatureManager.Feature.FOUR_TASK_CANVAS));
+
+        SavedSplitLayoutFeature.install(lpparam, hookRuntime, hookRegistry,
+                reflectionAccess,
+                savedLayout,
+                featureManager.isEnabled(FeatureManager.Feature.ADJUSTABLE_WINDOW_SIZE));
+
+        if (BuildConfig.DEBUG) {
+            installFourTaskTrace(lpparam, symbols, hookRegistry);
+        }
+
         // Keep the exact profile around for diagnostics / known-symbol hints.
         // It must never gate anything.
         PsCanvasCompatibilityProfile profile = PsCanvasCompatibilityProfile.find(apkInfo.sha256);
@@ -105,37 +168,240 @@ public final class PsCanvasHooks {
 
         // Install per capability group. A missing role only SKIPs its own group.
         if (symbols.role(PsCanvasSymbols.Role.SSTO_FLEXIBLE).available()) {
-            hook260608VerifiedSstoFlexible(lpparam, profile, symbols);
+            PsCanvasSymbols.RoleSymbol ssto =
+                    symbols.role(PsCanvasSymbols.Role.SSTO_FLEXIBLE);
+            String transitionClass = ssto.className;
+            String scaleMethod = ssto.scaleMethod != null ? ssto.scaleMethod
+                    : (profile == null ? null : profile.scaleMethod());
+            String intentListMethod = ssto.intentListMethod != null ? ssto.intentListMethod
+                    : (profile == null ? null : profile.intentListMethod());
+            String launchBoundsMethod = ssto.launchBoundsMethod != null
+                    ? ssto.launchBoundsMethod
+                    : (profile == null ? null : profile.launchBoundsMethod());
+            String maskMethod = ssto.maskAnimMethod != null ? ssto.maskAnimMethod
+                    : (profile == null ? null : profile.maskAnimationMethod());
+            PinchGestureFeature.installLifecycleHooks(lpparam, hookRuntime, hookRegistry,
+                    transitionClass, "Q", "u0", "I0");
+            PanoramaFeature.installLaunchGuard(lpparam, hookRuntime, hookRegistry,
+                    reflectionAccess, transitionClass, "L0",
+                    "getPanoramaModeManager", "M");
+            PsCanvasSymbols.RoleSymbol panoramaManager =
+                    symbols.role(PsCanvasSymbols.Role.PANORAMA_MANAGER);
+            boolean twoTaskPanoramaCapability = panoramaManager.available()
+                    && panoramaManager.twoTaskPredicateMethod != null;
+            String panoramaActiveMethod = twoTaskPanoramaCapability
+                    ? panoramaManager.panoramaActiveMethod : "M";
+            String panoramaEnterMethod = twoTaskPanoramaCapability
+                    ? panoramaManager.panoramaEnterMethod : "z";
+            String panoramaExitMethod = twoTaskPanoramaCapability
+                    ? panoramaManager.panoramaExitMethod : "A";
+            PinchGestureFeature.installScaleHook(lpparam, hookRuntime, hookRegistry,
+                    reflectionAccess, transitionClass, scaleMethod,
+                    "getPanoramaModeManager", panoramaActiveMethod,
+                    panoramaEnterMethod, panoramaExitMethod,
+                    twoTaskPanoramaCapability);
+            ClassicCanvasController.installTransitionIntentPatch(
+                    lpparam, hookRuntime, hookRegistry, transitionClass, intentListMethod);
+            ClassicLayoutFeature.installLaunchBoundsHook(lpparam, hookRuntime, hookRegistry,
+                    transitionClass, launchBoundsMethod);
+            PanoramaFeature.installMaskFix(lpparam, hookRuntime, hookRegistry,
+                    reflectionAccess, transitionClass, maskMethod, EMBEDDED_VIEW_DECOR,
+                    "com.oplus.flexiblewindow.FlexibleTaskView");
         } else {
+            String unavailable = "SSTO_FLEXIBLE role unavailable";
+            PinchGestureFeature.markLifecycleAndScaleUnavailable(hookRegistry, unavailable);
+            markHookSkipped(hookRegistry,
+                    PanoramaFeature.HOOK_LAUNCH_WHILE_ACTIVE_BLOCK, unavailable);
+            ClassicCanvasController.markTransitionUnavailable(hookRegistry, unavailable);
+            markHookSkipped(hookRegistry,
+                    ClassicLayoutFeature.HOOK_TRANSITION_LAUNCH_BOUNDS_FIX_BUNDLE,
+                    unavailable);
+            markHookSkipped(hookRegistry,
+                    PanoramaFeature.HOOK_TRANSITION_MASK_RECT_FIX, unavailable);
             PsCanvasLog.w("install: sstoFlexible SKIPPED (no reliable class resolved)");
         }
 
         boolean anim = symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_ANIM).available();
         boolean drag = symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_DRAG).available();
         if (anim && drag) {
-            hook260608ThreeSplitTouchRestore(lpparam, profile, symbols);
+            HookRuntime.Group touchGroup = hookRuntime.beginGroup("three_split_touch_composite");
+            boolean committed = false;
+            try {
+                String animationClass =
+                        symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_ANIM).className;
+                if (animationClass == null && profile != null) {
+                    animationClass = profile.threeSplitAnimClass();
+                }
+                String dragClass =
+                        symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_DRAG).className;
+                if (dragClass == null && profile != null) {
+                    dragClass = profile.threeSplitDragClass();
+                }
+                PinchGestureFeature.installTouchHooks(lpparam, hookRuntime, hookRegistry,
+                        reflectionAccess, animationClass, dragClass, "x1.a",
+                        EMBEDDED_VIEW_DECOR, "H0", "U0", "e0", "p0", "y0",
+                        "b", "c", "d", "e");
+                if (PinchGestureFeature.allTouchHooksInstalled(hookRegistry)) {
+                    committed = hookRuntime.commitGroup(touchGroup);
+                }
+            } finally {
+                if (!touchGroup.isClosed()) {
+                    hookRuntime.rollbackGroup(touchGroup);
+                }
+            }
+            if (!committed) {
+                PinchGestureFeature.markTouchRolledBack(hookRegistry);
+                PsCanvasLog.e("install: threeSplitTouch composite rolled back", null);
+            }
         } else {
+            String compositeUnavailable = "THREE_SPLIT_ANIM && THREE_SPLIT_DRAG unavailable"
+                    + " (anim=" + anim + " drag=" + drag + ")";
+            PinchGestureFeature.markTouchUnavailable(hookRegistry, compositeUnavailable);
             PsCanvasLog.w("install: threeSplitTouch SKIPPED"
                     + " (anim=" + anim + " drag=" + drag + ")");
         }
 
         if (symbols.role(PsCanvasSymbols.Role.CANVAS_CONTROLLER).available()) {
-            hook260608CanvasController(lpparam, profile, symbols);
+            String controllerClass =
+                    symbols.role(PsCanvasSymbols.Role.CANVAS_CONTROLLER).className;
+            if (controllerClass == null && profile != null) {
+                controllerClass = profile.canvasControllerClass();
+            }
+            ClassicCanvasController.installControllerFlagOverride(
+                    lpparam, hookRuntime, hookRegistry, controllerClass, "O");
         } else {
-            PsCanvasLog.w("install: canvasController SKIPPED (no reliable class resolved)");
+            ClassicCanvasController.markControllerUnavailable(
+                    hookRegistry, "CANVAS_CONTROLLER role unavailable");
         }
 
         // The remaining groups are independent capabilities: let them run and each
         // one logs its own install / failure. They no longer depend on a profile.
-        hook260608BlockPanoramaTapExit(lpparam);
-        hook260608ThreeSplitBoundsRequest(lpparam);
-        hook260608EqualWidthCanvas(lpparam);
-        hook260608DirectNewThreeSplitEntry(lpparam);
-        hookBlockThreeSplitTogether(lpparam);
-        hookBlockSplitBarThreeSplitDrag(lpparam);
+        PanoramaFeature.installExitGuard(lpparam, hookRuntime, hookRegistry,
+                reflectionAccess, CONTAINER_VIEW, "getPanoramaModeManager", "A",
+                "com.oplus.pscanvas.canvasmode.canvas.B0",
+                "com.oplus.pscanvas.canvasmode.canvas.A0");
+        ClassicLayoutFeature.install(lpparam, hookRuntime, hookRegistry,
+                UTIL, "o", "n", "M1");
+        ClassicCanvasController.installDirectEntryHook(lpparam, hookRuntime, hookRegistry,
+                INSTANCE_STATE_STORE, CONTAINER_ACTIVITY, "onCreate");
+        ClassicCanvasController.installConversionAnchorHooks(lpparam, hookRuntime,
+                hookRegistry, reflectionAccess, INSTANCE_STATE_STORE, CONTAINER_VIEW,
+                "e3", "R", "getAdapter", "getCount", "n",
+                ".canvasmode.canvas.ContainerActivity$", "c");
+        SplitBarFeature.install(lpparam, hookRuntime, hookRegistry, reflectionAccess,
+                threeTaskResize.className, threeTaskResize.threeTaskResizeSpringClass,
+                threeTaskResize.threeTaskResizeSpringStateClass,
+                threeTaskResize.threeTaskResizeRectUpdateMethod,
+                threeTaskResize.threeTaskResizeScrollStartMethod,
+                threeTaskResize.threeTaskResizeEnlargeMethod,
+                threeTaskResize.threeTaskResizeSpringDragMethod,
+                threeTaskResize.threeTaskResizeSpringInitMethod,
+                featureManager.isEnabled(FeatureManager.Feature.ADJUSTABLE_WINDOW_SIZE));
 
+        logHookRegistrySnapshot(hookRegistry);
         PsCanvasLog.i("install: capability-driven install complete;"
                 + " enabled=" + symbols.enabledCapabilities());
+    }
+
+    private static void installFourTaskTrace(PackageLoadContext lpparam,
+                                             PsCanvasSymbols symbols,
+                                             HookRegistry hookRegistry) {
+        PsCanvasSymbols.RoleSymbol trace =
+                symbols.role(PsCanvasSymbols.Role.P4_TRACE_CHAIN);
+        if (!trace.available()) {
+            PsCanvasLog.w("[FourTask][Trace] TRACE_DISABLED resolver=" + trace.status);
+            return;
+        }
+        try {
+            Class<?> controller = reflectionAccess.findClass(
+                    trace.className, lpparam.classLoader);
+            Class<?> adapter = reflectionAccess.findClass(
+                    trace.p4AdapterClass, lpparam.classLoader);
+            Class<?> taskData = reflectionAccess.findClass(
+                    descriptorToClassName(trace.p4TaskDataDescriptor), lpparam.classLoader);
+            Class<?> decor = reflectionAccess.findClass(
+                    trace.p4EmbeddedViewDecorClass, lpparam.classLoader);
+            Class<?> callback = reflectionAccess.findClass(
+                    trace.p4TaskCreatedCallbackClass, lpparam.classLoader);
+            Class<?> flexibleTaskView = reflectionAccess.findClass(
+                    trace.p4FlexibleTaskViewClass, lpparam.classLoader);
+            FourTaskTraceFeature.Config config = new FourTaskTraceFeature.Config(
+                    controller, trace.p4ControllerAppendMethod,
+                    trace.p4ControllerRemoveMethod, trace.p4ControllerFocusMethod,
+                    adapter, trace.p4AdapterAddMethod, trace.p4AdapterRemoveMethod,
+                    taskData,
+                    decor, trace.p4EmbeddedBindMethod, trace.p4EmbeddedAttachedMethod,
+                    callback, trace.p4TaskCreatedMethod,
+                    flexibleTaskView, trace.p4FlexibleResizeMethod,
+                    trace.p4FlexibleReleaseMethod,
+                    Rect.class, ComponentName.class);
+            FourTaskTraceFeature.declareHooks(hookRegistry, config);
+            ModuleLogger logger = new ModuleLogger(TAG,
+                    new AndroidLogSink(), new ModernXposedLogSink());
+            boolean installed = FourTaskTraceFeature.install(
+                    hookRuntime, hookRegistry, logger,
+                    new FourTaskTraceSnapshotReader(reflectionAccess, trace), config);
+            PsCanvasLog.i("[FourTask][Trace] state="
+                    + (installed ? "TRACE_READY" : "TRACE_DISABLED"));
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("[FourTask][Trace] TRACE_DISABLED setup failed", throwable);
+        }
+    }
+
+    private static String descriptorToClassName(String descriptor) {
+        if (descriptor == null || descriptor.length() < 3
+                || descriptor.charAt(0) != 'L'
+                || descriptor.charAt(descriptor.length() - 1) != ';') {
+            throw new IllegalArgumentException("Invalid object descriptor: " + descriptor);
+        }
+        return descriptor.substring(1, descriptor.length() - 1).replace('/', '.');
+    }
+
+    public static List<HookRegistry.Entry> hookRegistrySnapshot() {
+        return activeHookRegistry.snapshot();
+    }
+
+    private static void logHookRegistrySnapshot(HookRegistry hookRegistry) {
+        for (HookRegistry.Entry entry : hookRegistry.snapshot()) {
+            PsCanvasLog.i("hook-registry id=" + entry.id()
+                    + " status=" + entry.status()
+                    + " detail=" + entry.detail());
+        }
+    }
+
+    static synchronized void setReflectionAccessForTests(ReflectionAccess access) {
+        reflectionAccess = Objects.requireNonNull(access, "access");
+    }
+
+    static synchronized void resetReflectionAccessForTests() {
+        reflectionAccess = DEFAULT_REFLECTION_ACCESS;
+    }
+
+    private static void markHookInstalled(HookRegistry hookRegistry, String hookId,
+                                          String detail) {
+        try {
+            hookRegistry.markInstalled(hookId, detail);
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("HookRegistry INSTALLED update failed for " + hookId, throwable);
+        }
+    }
+
+    private static void markHookSkipped(HookRegistry hookRegistry, String hookId,
+                                        String detail) {
+        try {
+            hookRegistry.markSkipped(hookId, detail);
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("HookRegistry SKIPPED update failed for " + hookId, throwable);
+        }
+    }
+
+    private static void markHookFailed(HookRegistry hookRegistry, String hookId,
+                                       String detail, Throwable failure) {
+        try {
+            hookRegistry.markFailed(hookId, detail, failure);
+        } catch (Throwable throwable) {
+            PsCanvasLog.e("HookRegistry FAILED update failed for " + hookId, throwable);
+        }
     }
 
     /**
@@ -143,344 +409,24 @@ public final class PsCanvasHooks {
      * (startCanvasFrom=2), not through ContainerView.e3. Keep that entry on the
      * 502 left anchor and suppress only its activity-open transition.
      */
-    private static void hook260608DirectNewThreeSplitEntry(
-            XC_LoadPackage.LoadPackageParam lpparam) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                    CONTAINER_ACTIVITY, lpparam.classLoader, "onCreate", Bundle.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            Activity activity = (Activity) param.thisObject;
-                            Intent intent = activity.getIntent();
-                            Bundle extras = intent == null ? null : intent.getExtras();
-                            if (!isDirectNewThreeSplit(extras)) {
-                                return;
-                            }
-
-                            int oldFocus = extras.getInt(
-                                    "androidx.flexible.focusIndex", -1);
-                            int oldSide = extras.getInt("lineLayoutFocusSide", 0);
-                            Bundle normalized = new Bundle(extras);
-                            normalized.putInt("androidx.flexible.focusIndex", 0);
-                            normalized.putInt("lineLayoutFocusSide", 0);
-                            intent.replaceExtras(normalized);
-                            XposedHelpers.setAdditionalInstanceField(param.thisObject,
-                                    DIRECT_NEW_THREE_SPLIT_ENTRY, Boolean.TRUE);
-                            PsCanvasLog.i("260608 direct new three-split entry: left anchor "
-                                    + "focus=" + oldFocus + "->0 side=" + oldSide + "->0");
-                        }
-
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            if (!Boolean.TRUE.equals(
-                                    XposedHelpers.getAdditionalInstanceField(param.thisObject,
-                                            DIRECT_NEW_THREE_SPLIT_ENTRY))) {
-                                return;
-                            }
-                            XposedHelpers.removeAdditionalInstanceField(param.thisObject,
-                                    DIRECT_NEW_THREE_SPLIT_ENTRY);
-                            ((Activity) param.thisObject).overridePendingTransition(0, 0);
-                            PsCanvasLog.i("260608 direct new three-split entry animation disabled");
-                        }
-                    });
-            PsCanvasLog.i("260608 direct new three-split entry hook installed");
-        } catch (Throwable t) {
-            PsCanvasLog.e("260608 direct new three-split entry hook failed", t);
-        }
-    }
-
-    private static boolean isDirectNewThreeSplit(Bundle extras) {
-        if (extras == null
-                || extras.getInt("startCanvasFrom", 0) != 2
-                || extras.getInt("androidx.flexible.layoutOrientation", 0) != 3) {
-            return false;
-        }
-        int[] taskIds = extras.getIntArray("androidx.flexible.taskIdList");
-        ArrayList<Intent> intents = extras.getParcelableArrayList(
-                "androidx.flexible.intentList", Intent.class);
-        return taskIds != null && taskIds.length == 3
-                && intents != null && intents.size() == 3;
-    }
-
     /** Keep a normal single tap from exiting the full panorama overview. */
-    private static void hook260608BlockPanoramaTapExit(
-            XC_LoadPackage.LoadPackageParam lpparam) {
-        Class<?> managerClass = resolvePanoramaModeManagerClass(lpparam);
-        if (managerClass == null) {
-            PsCanvasLog.w("260608 panorama manager class missing for tap-exit hook");
-            return;
-        }
+    private static void installDeferredHooksOnContainerStart(PackageLoadContext lpparam) {
         try {
-            XposedHelpers.findAndHookMethod(managerClass, "A", Boolean.TYPE,
-                    new XC_MethodHook() {
+            hookRuntime.findAndHookMethod(CONTAINER_ACTIVITY, lpparam.classLoader, "onCreate",
+                    Bundle.class, new HookCallback() {
                         @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            if (!Boolean.TRUE.equals(allowDirectionalPanoramaExit.get())
-                                    && isCanvasGestureManagerCall()) {
-                                param.setResult(null);
-                                PsCanvasLog.i("260608 blocked single-tap panorama exit");
-                            }
-                        }
-                    });
-            PsCanvasLog.i("260608 panorama single-tap exit hook installed on "
-                    + managerClass.getName());
-        } catch (Throwable throwable) {
-            PsCanvasLog.e("260608 panorama single-tap exit hook failed", throwable);
-        }
-    }
-
-    /**
-     * Resolve the PanoramaModeManager class structurally: take the declared
-     * return type of ContainerView.getPanoramaModeManager(). The obfuscated
-     * class name differs between generations (260403 uses canvas.A0,
-     * 260512/260608 use canvas.B0) and an unrelated class may occupy the
-     * same short name (260403 has a canvas.B0 without any A(boolean)).
-     */
-    private static Class<?> resolvePanoramaModeManagerClass(
-            XC_LoadPackage.LoadPackageParam lpparam) {
-        try {
-            Class<?> containerViewClass = XposedHelpers.findClass(
-                    CONTAINER_VIEW, lpparam.classLoader);
-            Method getter = containerViewClass.getDeclaredMethod(
-                    "getPanoramaModeManager");
-            getter.setAccessible(true);
-            return getter.getReturnType();
-        } catch (Throwable ignored) {
-            return findClassFirst(lpparam.classLoader,
-                    "com.oplus.pscanvas.canvasmode.canvas.B0",
-                    "com.oplus.pscanvas.canvasmode.canvas.A0");
-        }
-    }
-
-    private static boolean isCanvasGestureManagerCall() {
-        StackTraceElement[] trace = Thread.currentThread().getStackTrace();
-        for (int index = 0; index < Math.min(trace.length, 24); index++) {
-            String className = trace[index].getClassName();
-            if ((className.endsWith(".canvas.y")
-                    || className.endsWith(".canvas.C0332y"))
-                    && "T".equals(trace[index].getMethodName())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 700 adds isThreeSplitTogether to the three-intent bounds request. That makes
-     * system_server allocate three 1113px tasks. 502 sends the same request without
-     * this flag. The 260608 policy then returns 1685px portrait tasks, so normalize
-     * both the initial multi-task response and every later single-task refresh to
-     * the same 502 column width used by the canvas.
-     */
-    private static void hook260608ThreeSplitBoundsRequest(
-            XC_LoadPackage.LoadPackageParam lpparam) {
-        try {
-            XposedHelpers.findAndHookMethod(UTIL, lpparam.classLoader, "o",
-                    Intent.class, Integer.TYPE, Integer.TYPE,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            Intent intent = (Intent) param.args[0];
-                            if (intent != null && intent.getBooleanExtra(
-                                    "isThreeSplitTogether", false)) {
-                                intent.removeExtra("isThreeSplitTogether");
-                                param.setObjectExtra("pscanvasfix_502_single_bounds", Boolean.TRUE);
-                                PsCanvasLog.i("260608 B1.l.o: removed 700 "
-                                        + "isThreeSplitTogether from single-task request");
-                            }
-                        }
-
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            if (!Boolean.TRUE.equals(param.getObjectExtra(
-                                    "pscanvasfix_502_single_bounds"))
-                                    || !(param.getResult() instanceof Bundle)) {
-                                return;
-                            }
-                            Bundle normalized = normalize260608ThreeSplitTaskBounds(
-                                    (Bundle) param.getResult());
-                            param.setResult(normalized);
-                            PsCanvasLog.i("260608 B1.l.o: normalized single-task bounds to "
-                                    + normalized.getParcelable(
-                                    "androidx.flexible.LaunchBounds", Rect.class));
-                        }
-                    });
-            PsCanvasLog.i("260608 B1.l.o 502 single-task bounds installed");
-        } catch (Throwable t) {
-            PsCanvasLog.e("260608 B1.l.o single-task bounds install failed", t);
-        }
-
-        try {
-            XposedHelpers.findAndHookMethod(UTIL, lpparam.classLoader, "n",
-                    List.class, Integer.TYPE, Bundle.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            if (!(param.args[0] instanceof List)
-                                    || ((List<?>) param.args[0]).size() != 3
-                                    || !Integer.valueOf(3).equals(param.args[1])
-                                    || !(param.args[2] instanceof Bundle)) {
-                                return;
-                            }
-                            Bundle request = (Bundle) param.args[2];
-                            if (!request.getBoolean("isThreeSplitTogether", false)) {
-                                return;
-                            }
-                            Bundle restored502Request = new Bundle(request);
-                            restored502Request.remove("isThreeSplitTogether");
-                            param.args[2] = restored502Request;
-                            param.setObjectExtra("pscanvasfix_502_multi_bounds", Boolean.TRUE);
-                            PsCanvasLog.i("260608 B1.l.n: removed 700 "
-                                    + "isThreeSplitTogether bounds flag");
-                        }
-
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            if (!Boolean.TRUE.equals(param.getObjectExtra(
-                                    "pscanvasfix_502_multi_bounds"))
-                                    || !(param.getResult() instanceof Bundle)) {
-                                return;
-                            }
-                            Bundle result = new Bundle((Bundle) param.getResult());
-                            ArrayList<Bundle> taskBundles = result.getParcelableArrayList(
-                                    "androidx.flexible.layout.info.list", Bundle.class);
-                            if (taskBundles == null || taskBundles.size() != 3) {
-                                return;
-                            }
-                            ArrayList<Bundle> normalizedTaskBundles = new ArrayList<>(3);
-                            for (Bundle taskBundle : taskBundles) {
-                                normalizedTaskBundles.add(
-                                        normalize260608ThreeSplitTaskBounds(taskBundle));
-                            }
-                            result.putParcelableArrayList(
-                                    "androidx.flexible.layout.info.list", normalizedTaskBundles);
-                            param.setResult(result);
-                            PsCanvasLog.i("260608 B1.l.n: normalized initial three-task bounds "
-                                    + "to 502 column width");
-                        }
-                    });
-            PsCanvasLog.i("260608 B1.l.n 502 bounds request installed");
-        } catch (Throwable t) {
-            PsCanvasLog.e("260608 B1.l.n bounds request install failed", t);
-        }
-    }
-
-    private static Bundle normalize260608ThreeSplitTaskBounds(Bundle source) {
-        Bundle normalized = new Bundle(source);
-        Rect launchBounds = normalized.getParcelable(
-                "androidx.flexible.LaunchBounds", Rect.class);
-        if (launchBounds == null || launchBounds.height() <= 0) {
-            return normalized;
-        }
-        // Portrait-device three-split rows are landscape rects (2400x1685);
-        // the OEM vertical-stack bounds are already consistent with the
-        // landscape slot rows. Only portrait columns (height > width, e.g.
-        // 1113x2400 on a landscape device) get the 502 equal-width column.
-        if (!PanoramaModeCompat.isPortraitColumn(
-                launchBounds.width(), launchBounds.height())) {
-            return normalized;
-        }
-        int width = PanoramaModeCompat.equalColumnWidth(launchBounds.height());
-        Rect columnBounds = new Rect(launchBounds.left, launchBounds.top,
-                launchBounds.left + width, launchBounds.bottom);
-        normalized.putParcelable("androidx.flexible.LaunchBounds", columnBounds);
-        normalized.putParcelable("androidx.flexible.LaunchHorizontalBounds",
-                new Rect(columnBounds));
-        return normalized;
-    }
-
-    /** Restore the 502 first-open canvas: two portrait columns plus a right-side peek. */
-    private static void hook260608EqualWidthCanvas(XC_LoadPackage.LoadPackageParam lpparam) {
-        try {
-            XposedHelpers.findAndHookMethod(UTIL, lpparam.classLoader, "M1",
-                    List.class, Integer.TYPE, Float.TYPE,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            Object rawResult = param.getResult();
-                            if (!(rawResult instanceof List)
-                                    || !(param.args[0] instanceof List)
-                                    || ((List<?>) param.args[0]).size() != 3
-                                    || !Integer.valueOf(3).equals(param.args[1])) {
-                                return;
-                            }
-                            try {
-                                List<?> original = (List<?>) rawResult;
-                                if (original.size() != 3) {
-                                    return;
-                                }
-                                int top = Integer.MAX_VALUE;
-                                int height = 0;
-                                for (Object item : original) {
-                                    if (!(item instanceof Rect)) {
-                                        return;
-                                    }
-                                    Rect rect = (Rect) item;
-                                    top = Math.min(top, rect.top);
-                                    height = Math.max(height, rect.height());
-                                }
-                                if (height <= 0 || top == Integer.MAX_VALUE) {
-                                    return;
-                                }
-                                // Portrait-device three-split: OEM slots are
-                                // landscape rows (2400x1685) stacked vertically,
-                                // already matching the task bounds. Replacing
-                                // them with equal-width 1123 columns letterboxes
-                                // the 2400x1685 task surfaces. Apply the 502
-                                // wide-canvas replacement only when every slot
-                                // is a portrait column (height > width).
-                                for (Object item : original) {
-                                    Rect rect = (Rect) item;
-                                    if (!PanoramaModeCompat.isPortraitColumn(
-                                            rect.width(), rect.height())) {
-                                        return;
-                                    }
-                                }
-                                float density = ((Number) param.args[2]).floatValue();
-                                int gap = Math.max(1, Math.round(density * 10.0f));
-                                int width = PanoramaModeCompat.equalColumnWidth(height);
-                                ArrayList<Rect> restored = new ArrayList<>(3);
-                                int left = 0;
-                                for (int index = 0; index < 3; index++) {
-                                    restored.add(new Rect(left, top, left + width, top + height));
-                                    left += width + gap;
-                                }
-                                param.setResult(restored);
-                                if (!equalWidthCanvasLogged) {
-                                    equalWidthCanvasLogged = true;
-                                    PsCanvasLog.i("260608 B1.l.M1: restored 502 wide canvas "
-                                            + "width=" + width + " height=" + height
-                                            + " gap=" + gap + " rects=" + restored);
-                                }
-                            } catch (Throwable t) {
-                                PsCanvasLog.e("260608 equal-width canvas callback failed", t);
-                            }
-                        }
-                    });
-            PsCanvasLog.i("260608 B1.l.M1 502 wide canvas installed");
-        } catch (Throwable t) {
-            PsCanvasLog.e("260608 B1.l.M1 wide canvas install failed", t);
-        }
-    }
-
-    private static void installDeferredHooksOnContainerStart(XC_LoadPackage.LoadPackageParam lpparam) {
-        try {
-            XposedHelpers.findAndHookMethod(CONTAINER_ACTIVITY, lpparam.classLoader, "onCreate",
-                    Bundle.class, new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
+                        protected void afterHookedMethod(HookCall param) {
                             if (deferredHooksInstalled) {
                                 return;
                             }
                             deferredHooksInstalled = true;
-                            XposedBridge.log(TAG + ": installing deferred hooks after ContainerActivity.onCreate");
+                            PsCanvasLog.i("installing deferred hooks after ContainerActivity.onCreate");
                             hook502BehaviorRestoreDeferred(lpparam);
                             hookTwoColumnPanoramaRestoreDeferred(lpparam);
                         }
                     });
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": ContainerActivity.onCreate defer hook failed: " + throwable);
+            PsCanvasLog.e("ContainerActivity.onCreate defer hook failed:", throwable);
             hook502BehaviorRestoreDeferred(lpparam);
             hookTwoColumnPanoramaRestoreDeferred(lpparam);
         }
@@ -488,9 +434,9 @@ public final class PsCanvasHooks {
 
     private static Class<?> findClassSafe(String className, ClassLoader classLoader) {
         try {
-            return XposedHelpers.findClass(className, classLoader);
+            return reflectionAccess.findClass(className, classLoader);
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": class not ready: " + className + " (" + throwable + ")");
+            PsCanvasLog.d("class not ready: " + className + " (" + throwable + ")");
             return null;
         }
     }
@@ -500,234 +446,12 @@ public final class PsCanvasHooks {
             Class<?> found = findClassSafe(className, classLoader);
             if (found != null) {
                 if (!className.equals(classNames[0])) {
-                    XposedBridge.log(TAG + ": resolved " + classNames[0] + " as " + className);
+                    PsCanvasLog.i("resolved " + classNames[0] + " as " + className);
                 }
                 return found;
             }
         }
         return null;
-    }
-
-    /** Install only SStoFlexible methods whose DEX signatures are verified. */
-    private static void hook260608VerifiedSstoFlexible(XC_LoadPackage.LoadPackageParam lpparam,
-                                                        PsCanvasCompatibilityProfile profile,
-                                                        PsCanvasSymbols symbols) {
-        PsCanvasSymbols.RoleSymbol ssto =
-                symbols.role(PsCanvasSymbols.Role.SSTO_FLEXIBLE);
-        String target = ssto.className;
-        String scaleMethod = ssto.scaleMethod != null ? ssto.scaleMethod
-                : (profile == null ? null : profile.scaleMethod());
-        String intentListMethod = ssto.intentListMethod != null ? ssto.intentListMethod
-                : (profile == null ? null : profile.intentListMethod());
-        String launchBoundsMethod = ssto.launchBoundsMethod != null ? ssto.launchBoundsMethod
-                : (profile == null ? null : profile.launchBoundsMethod());
-        String maskAnimMethod = ssto.maskAnimMethod != null ? ssto.maskAnimMethod
-                : (profile == null ? null : profile.maskAnimationMethod());
-        // These no-argument methods are verified from the 260608 DEX by their
-        // distinctive transition strings.  They only provide runtime evidence
-        // for the next mapping step; they do not alter the OEM transition.
-        hookBeforeMethod(lpparam, target, "Q", new Class[0],
-                param -> PsCanvasLog.i("260608 trace SStoFlexible.Q init"));
-        hookBeforeMethod(lpparam, target, "u0", new Class[0],
-                param -> PsCanvasLog.i("260608 trace SStoFlexible.u0 scaleEnd"));
-        hookBeforeMethod(lpparam, target, "I0", new Class[0],
-                param -> PsCanvasLog.i("260608 trace SStoFlexible.I0 startAnimation"));
-        hookBeforeMethod(lpparam, target, "L0", new Class[0], param -> {
-            if (is260608PanoramaActive(param.thisObject)) {
-                param.setResult(false);
-                PsCanvasLog.i("260608 blocked SStoFlexible.L0 while full panorama is active");
-                return;
-            }
-            PsCanvasLog.i("260608 trace SStoFlexible.L0 launch");
-        });
-        try {
-            XposedHelpers.findAndHookMethod(target, lpparam.classLoader, scaleMethod,
-                    ScaleGestureDetector.class, Integer.TYPE, new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            PsCanvasLog.i("260608 trace SStoFlexible.t0 scale pointerCount="
-                                    + param.args[1]);
-                            Object containerView = SplitPolicyCompat.findContainerView(param.thisObject);
-                            if (handle260608PanoramaScale(containerView,
-                                    (ScaleGestureDetector) param.args[0],
-                                    (Integer) param.args[1])) {
-                                param.setResult(null);
-                                return;
-                            }
-                            if (ThreeSplitTouch502Compat.shouldUseCanvasSyncPinch(containerView)) {
-                                param.setResult(null);
-                                PsCanvasLog.d("260608 blocked x1.x.t0 in panorama 3-split");
-                                return;
-                            }
-                            int state = ObfFieldCompat.getInt(param.thisObject,
-                                    ObfFieldCompat.R_CHANGE_STATE, "f14152y");
-                            if (state == 0 || state == 2) {
-                                ObfFieldCompat.setInt(param.thisObject,
-                                        ObfFieldCompat.R_CHANGE_STATE, "f14152y", 1);
-                            }
-                        }
-                    });
-            PsCanvasLog.i("260608 SStoFlexible.t0 installed");
-        } catch (Throwable throwable) {
-            PsCanvasLog.e("260608 SStoFlexible.t0 failed", throwable);
-        }
-
-        try {
-            XposedHelpers.findAndHookMethod(target, lpparam.classLoader, intentListMethod,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            Object result = param.getResult();
-                            if (result instanceof List) {
-                                SplitPolicyCompat.patchIntentListTaskIds(param.thisObject,
-                                        (List<?>) result);
-                            }
-                        }
-                    });
-            PsCanvasLog.i("260608 SStoFlexible.I installed");
-        } catch (Throwable throwable) {
-            PsCanvasLog.e("260608 SStoFlexible.I failed", throwable);
-        }
-
-        try {
-            XposedHelpers.findAndHookMethod(target, lpparam.classLoader,
-                    launchBoundsMethod, List.class, int[].class, new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            Object result = param.getResult();
-                            if (result instanceof Bundle) {
-                                Context context = SplitPolicyCompat.findContext(param.thisObject);
-                                param.setResult(FlexibleTransitionCompat.fixLaunchBoundsBundle(
-                                        (Bundle) result, context));
-                            }
-                        }
-                    });
-            PsCanvasLog.i("260608 SStoFlexible.H installed");
-        } catch (Throwable throwable) {
-            PsCanvasLog.e("260608 SStoFlexible.H failed", throwable);
-        }
-
-        try {
-            Class<?> embeddedDecorClass = XposedHelpers.findClass(EMBEDDED_VIEW_DECOR,
-                    lpparam.classLoader);
-            Class<?> flexibleTaskViewClass = XposedHelpers.findClass(
-                    "com.oplus.flexiblewindow.FlexibleTaskView", lpparam.classLoader);
-            XposedHelpers.findAndHookMethod(target, lpparam.classLoader,
-                    maskAnimMethod, android.view.SurfaceControl.Transaction.class,
-                    android.view.SurfaceControl.class, android.view.SurfaceControl.class,
-                    android.view.SurfaceControl.class, android.view.SurfaceControl.class,
-                    embeddedDecorClass, Integer.TYPE, flexibleTaskViewClass, new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            PinchTransition502Compat.fixPanoramaMaskAnimRect(
-                                    param.thisObject, param.args[5]);
-                        }
-                    });
-            PsCanvasLog.i("260608 SStoFlexible.Z installed");
-        } catch (Throwable throwable) {
-            PsCanvasLog.e("260608 SStoFlexible.Z failed", throwable);
-        }
-    }
-
-    /** 502 uses pinch for panorama entry and spread for panorama exit. */
-    private static boolean handle260608PanoramaScale(Object containerView,
-                                                      ScaleGestureDetector detector,
-                                                      int pointerCount) {
-        if (pointerCount < 4 || containerView == null
-                || !ThreeSplitTouch502Compat.isThreeAppCanvas(containerView)) {
-            return false;
-        }
-        try {
-            Object manager = XposedHelpers.callMethod(
-                    containerView, "getPanoramaModeManager");
-            if (manager == null) {
-                return false;
-            }
-            boolean active = Boolean.TRUE.equals(XposedHelpers.callMethod(manager, "M"));
-            float scaleFactor = detector.getScaleFactor();
-            if (scaleFactor < 1.0f) {
-                if (!active) {
-                    XposedHelpers.callMethod(manager, "z", true);
-                    PsCanvasLog.i("260608 pinch entered full panorama; scale="
-                            + scaleFactor + " pointers=" + pointerCount);
-                }
-            } else if (scaleFactor > 1.0f && active) {
-                allowDirectionalPanoramaExit.set(Boolean.TRUE);
-                try {
-                    XposedHelpers.callMethod(manager, "A", true);
-                    PsCanvasLog.i("260608 spread exited full panorama; scale="
-                            + scaleFactor + " pointers=" + pointerCount);
-                } finally {
-                    allowDirectionalPanoramaExit.remove();
-                }
-            }
-            // Never let 700 reinterpret a four/five-finger scale as the
-            // three-floating-window transition.
-            return true;
-        } catch (Throwable throwable) {
-            PsCanvasLog.e("260608 panorama directional gesture failed", throwable);
-            return false;
-        }
-    }
-
-    private static void hook260608ThreeSplitTouchRestore(
-            XC_LoadPackage.LoadPackageParam lpparam, PsCanvasCompatibilityProfile profile,
-            PsCanvasSymbols symbols) {
-        String animClass = symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_ANIM).className;
-        if (animClass == null && profile != null) {
-            animClass = profile.threeSplitAnimClass();
-        }
-        Class<?> animManagerClass = animClass == null
-                ? null : findClassSafe(animClass, lpparam.classLoader);
-        if (animManagerClass == null) {
-            PsCanvasLog.e("260608 ThreeSplitAnim class missing", null);
-        } else {
-            hookVoidWhenPanoramaTouch(animManagerClass, "H0", lpparam, "resetAll");
-            hookVoidWhenPanoramaTouch(animManagerClass, "U0", lpparam,
-                    "startScaleDownAnim", Boolean.TYPE);
-            hookVoidWhenPanoramaTouch(animManagerClass, "e0", lpparam,
-                    "checkIfNeedAnim", Integer.TYPE, Integer.TYPE);
-            hookVoidWhenPanoramaTouch(animManagerClass, "p0", lpparam,
-                    "onControlBarLongPress");
-            try {
-                replaceMethod(lpparam, animManagerClass.getName(), "y0", new Class[0], param -> {
-                    if (ThreeSplitTouch502Compat.shouldBlockTouchAnim(param.thisObject)) {
-                        return false;
-                    }
-                    return XposedBridge.invokeOriginalMethod(
-                            param.method, param.thisObject, param.args);
-                });
-                PsCanvasLog.i("260608 ThreeSplitAnim installed on " + animManagerClass.getName());
-            } catch (Throwable throwable) {
-                PsCanvasLog.e("260608 ThreeSplitAnim.y0 failed", throwable);
-            }
-        }
-
-        String dragClass = symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_DRAG).className;
-        if (dragClass == null && profile != null) {
-            dragClass = profile.threeSplitDragClass();
-        }
-        Class<?> dragManagerClass = dragClass == null
-                ? null : findClassSafe(dragClass, lpparam.classLoader);
-        if (dragManagerClass == null) {
-            PsCanvasLog.e("260608 ThreeSplitDrag class missing", null);
-        } else {
-            Class<?> dragStateClass = findClassSafe("x1.a", lpparam.classLoader);
-            if (dragStateClass != null) {
-                hookVoidWhenPanoramaTouch(dragManagerClass, "b", lpparam,
-                        "handleThreeSplitDown", dragStateClass, MotionEvent.class);
-                hookVoidWhenPanoramaTouch(dragManagerClass, "c", lpparam,
-                        "handleThreeSplitMove", dragStateClass, MotionEvent.class);
-                hookVoidWhenPanoramaTouch(dragManagerClass, "d", lpparam,
-                        "handleThreeSplitUp", dragStateClass);
-            }
-            Class<?> embeddedDecorClass = findClassSafe(EMBEDDED_VIEW_DECOR, lpparam.classLoader);
-            if (embeddedDecorClass != null) {
-                hookVoidWhenPanoramaTouch(dragManagerClass, "e", lpparam,
-                        "initThreeSplitDrag", embeddedDecorClass);
-            }
-            PsCanvasLog.i("260608 ThreeSplitDrag installed on " + dragManagerClass.getName());
-        }
     }
 
     /**
@@ -744,21 +468,21 @@ public final class PsCanvasHooks {
             return false;
         }
         try {
-            Object adapter = XposedHelpers.callMethod(containerView, "getAdapter");
-            Object rawLayout = adapter == null ? null : XposedHelpers.callMethod(adapter, "n");
+            Object adapter = reflectionAccess.callMethod(containerView, "getAdapter");
+            Object rawLayout = adapter == null ? null : reflectionAccess.callMethod(adapter, "n");
             PsCanvasLog.i("260608 panorama gate: layout=" + rawLayout);
             if (!(rawLayout instanceof Integer)
                     || !PanoramaModeCompat.shouldEnterFromPinch(3, (Integer) rawLayout)) {
                 return false;
             }
-            Object manager = XposedHelpers.callMethod(containerView, "getPanoramaModeManager");
+            Object manager = reflectionAccess.callMethod(containerView, "getPanoramaModeManager");
             if (manager == null) {
                 PsCanvasLog.w("260608 panorama manager missing");
                 return false;
             }
-            Object active = XposedHelpers.callMethod(manager, "M");
+            Object active = reflectionAccess.callMethod(manager, "M");
             if (!Boolean.TRUE.equals(active)) {
-                XposedHelpers.callMethod(manager, "z", true);
+                reflectionAccess.callMethod(manager, "z", true);
                 PsCanvasLog.i("260608 entered full panorama mode from layout=" + rawLayout);
             } else {
                 PsCanvasLog.d("260608 kept full panorama mode from layout=" + rawLayout);
@@ -770,56 +494,17 @@ public final class PsCanvasHooks {
         }
     }
 
-    private static boolean is260608PanoramaActive(Object splitPolicy) {
-        Object containerView = SplitPolicyCompat.findContainerView(splitPolicy);
-        return is260608PanoramaManagerActive(containerView);
-    }
-
-    private static boolean is260608PanoramaManagerActive(Object containerView) {
-        if (containerView == null) {
-            return false;
-        }
-        try {
-            Object manager = XposedHelpers.callMethod(containerView, "getPanoramaModeManager");
-            return manager != null && Boolean.TRUE.equals(XposedHelpers.callMethod(manager, "M"));
-        } catch (Throwable throwable) {
-            PsCanvasLog.e("260608 panorama state lookup failed", throwable);
-            return false;
-        }
-    }
-
-    private static void hook260608CanvasController(XC_LoadPackage.LoadPackageParam lpparam,
-                                                    PsCanvasCompatibilityProfile profile,
-                                                    PsCanvasSymbols symbols) {
-        String controllerClass = symbols.role(PsCanvasSymbols.Role.CANVAS_CONTROLLER).className;
-        if (controllerClass == null && profile != null) {
-            controllerClass = profile.canvasControllerClass();
-        }
-        try {
-            XposedHelpers.findAndHookMethod(controllerClass, lpparam.classLoader,
-                    "O", Boolean.TYPE, new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            param.args[0] = false;
-                        }
-                    });
-            PsCanvasLog.i("260608 CanvasController.O installed");
-        } catch (Throwable throwable) {
-            PsCanvasLog.e("260608 CanvasController.O failed", throwable);
-        }
-    }
-
     /**
      * Restore 502 split-screen / five-finger pinch behavior on 700 (core, primary dex).
      */
-    private static void hook502BehaviorRestoreCore(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hook502BehaviorRestoreCore(PackageLoadContext lpparam) {
         replaceMethod(lpparam, UTIL, "F0", new Class[]{Context.class}, param -> {
             try {
-                Object activity = XposedHelpers.callStaticMethod(
-                        XposedHelpers.findClass(UTIL, lpparam.classLoader),
+                Object activity = reflectionAccess.callStaticMethod(
+                        reflectionAccess.findClass(UTIL, lpparam.classLoader),
                         "O1", param.args[0]);
                 if (activity != null) {
-                    Object containerView = XposedHelpers.callMethod(activity, "v0");
+                    Object containerView = reflectionAccess.callMethod(activity, "v0");
                     if (ThreeSplitTouch502Compat.isThreeAppCanvas(containerView)) {
                         PsCanvasLog.d("F0=false for 3-app canvas (502 sync pinch)");
                         return false;
@@ -833,7 +518,7 @@ public final class PsCanvasHooks {
 
     private static volatile Class<?> gestureManagerClass;
 
-    private static void hook502BehaviorRestoreDeferred(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hook502BehaviorRestoreDeferred(PackageLoadContext lpparam) {
         Class<?> gestureClass = findClassFirst(lpparam.classLoader,
                 GESTURE_MGR, "com.oplus.pscanvas.canvasmode.canvas.C0332y");
         if (gestureClass == null) {
@@ -845,18 +530,18 @@ public final class PsCanvasHooks {
     }
 
     /** Keep f10934L=false whenever canvas hosts 3 apps. */
-    private static void hookGestureThreeAppSync(XC_LoadPackage.LoadPackageParam lpparam,
+    private static void hookGestureThreeAppSync(PackageLoadContext lpparam,
                                                 Class<?> gestureClass) {
         Class<?> containerActivityClass = findClassFirst(lpparam.classLoader,
                 CONTAINER_ACTIVITY, "com.oplus.pscanvas.canvasmode.canvas.ContainerActivity");
         if (containerActivityClass != null) {
             try {
-                XposedHelpers.findAndHookConstructor(gestureClass, containerActivityClass,
-                        new XC_MethodHook() {
+                hookRuntime.findAndHookConstructor(gestureClass, containerActivityClass,
+                        new HookCallback() {
                             @Override
-                            protected void afterHookedMethod(MethodHookParam param) {
+                            protected void afterHookedMethod(HookCall param) {
                                 try {
-                                    Object containerView = XposedHelpers.callMethod(param.args[0], "v0");
+                                    Object containerView = reflectionAccess.callMethod(param.args[0], "v0");
                                     ThreeSplitTouch502Compat.syncGestureSplitFlagForThreeApp(
                                             gestureClass, containerView);
                                 } catch (Throwable ignored) {
@@ -873,13 +558,13 @@ public final class PsCanvasHooks {
                 "com.oplus.pscanvas.canvasmode.canvas.A0");
         if (draggableClass != null && panoramaClass != null) {
             try {
-                XposedHelpers.findAndHookMethod(gestureClass, "O",
+                hookRuntime.findAndHookMethod(gestureClass, "O",
                         draggableClass,
-                        XposedHelpers.findClass(CONTAINER_VIEW, lpparam.classLoader),
+                        reflectionAccess.findClass(CONTAINER_VIEW, lpparam.classLoader),
                         panoramaClass,
-                        new XC_MethodHook() {
+                        new HookCallback() {
                             @Override
-                            protected void afterHookedMethod(MethodHookParam param) {
+                            protected void afterHookedMethod(HookCall param) {
                                 ThreeSplitTouch502Compat.syncGestureSplitFlagForThreeApp(
                                         gestureClass, param.args[1]);
                             }
@@ -899,9 +584,9 @@ public final class PsCanvasHooks {
      * 700 also renamed removeTask: 502 ContainerActivity.w1() -> 700 C1().
      */
     /** PinchTransitionHooks — 502 S1.p core (dummy prepare + layout-aware L/x). */
-    private static void hook502SplitToFlexibleRestore(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hook502SplitToFlexibleRestore(PackageLoadContext lpparam) {
         replaceMethod(lpparam, CONTAINER_ACTIVITY, "F1", new Class[0], param -> {
-            XposedBridge.log(TAG + ": blocked F1 setChangeToState(2) for 502 pinch path");
+            PsCanvasLog.d("blocked F1 setChangeToState(2) for 502 pinch path");
             return null;
         });
 
@@ -909,7 +594,7 @@ public final class PsCanvasHooks {
             int state = (Integer) param.args[0];
             if (state == 0 || state == 2) {
                 param.args[0] = 1;
-                XposedBridge.log(TAG + ": k0 remap changeState " + state + " -> 1");
+                PsCanvasLog.d("k0 remap changeState " + state + " -> 1");
             }
         });
 
@@ -959,14 +644,14 @@ public final class PsCanvasHooks {
                 return null;
             }
             try {
-                List<?> intents = (List<?>) XposedHelpers.callMethod(splitPolicy, "C");
+                List<?> intents = (List<?>) reflectionAccess.callMethod(splitPolicy, "C");
                 if (intents != null) {
                     SplitPolicyCompat.patchIntentListTaskIds(splitPolicy, intents);
                 }
             } catch (Throwable throwable) {
                 PsCanvasLog.e("e0 intent patch failed", throwable);
             }
-            return XposedBridge.invokeOriginalMethod(param.method, splitPolicy, param.args);
+            return hookRuntime.invokeOriginalMethod(param.method, splitPolicy, param.args);
         });
 
         hookAfterMethod(lpparam, SSTO_FLEX, "C", new Class[0], param -> {
@@ -1045,7 +730,7 @@ public final class PsCanvasHooks {
         replaceMethod(lpparam, SSTO_FLEX, "i0", new Class[0], param -> {
             if (FlexibleTransitionCompat.isEarlySplitZoomActive()
                     || FlexibleTransitionCompat.wasZoomFallbackUsed()) {
-                XposedBridge.log(TAG + ": blocked i0 reset during 502 zoom transition");
+                PsCanvasLog.d("blocked i0 reset during 502 zoom transition");
                 return null;
             }
             Object splitPolicy = param.thisObject;
@@ -1068,7 +753,7 @@ public final class PsCanvasHooks {
                 return null;
             }
             SplitPolicyCompat.clearTransitionActive();
-            return XposedBridge.invokeOriginalMethod(param.method, splitPolicy, param.args);
+            return hookRuntime.invokeOriginalMethod(param.method, splitPolicy, param.args);
         });
 
         hookPanoramaMaskAnimRectFix(lpparam);
@@ -1091,13 +776,13 @@ public final class PsCanvasHooks {
                 return null;
             }
             if (!FlexibleTransitionCompat.wasLastTransitionSucceeded()) {
-                return XposedBridge.invokeOriginalMethod(param.method, splitPolicy, param.args);
+                return hookRuntime.invokeOriginalMethod(param.method, splitPolicy, param.args);
             }
             safeCall(activity, "L1", true);
             try {
-                Object tracker = XposedHelpers.callStaticMethod(
-                        XposedHelpers.findClass("B1.h", lpparam.classLoader), "a", activity);
-                XposedHelpers.callMethod(tracker, "e", "four_finger_to_zoom");
+                Object tracker = reflectionAccess.callStaticMethod(
+                        reflectionAccess.findClass("B1.h", lpparam.classLoader), "a", activity);
+                reflectionAccess.callMethod(tracker, "e", "four_finger_to_zoom");
             } catch (Throwable throwable) {
                 PsCanvasLog.e("c0 analytics failed", throwable);
             }
@@ -1111,7 +796,7 @@ public final class PsCanvasHooks {
             "com.oplus.pscanvas.canvasmode.canvas.view.EmbeddedViewDecor";
 
     /** After createMaskLeash (x1.r.S): clamp peek mask anim rect to visible cell in layout 4. */
-    private static void hookPanoramaMaskAnimRectFix(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookPanoramaMaskAnimRectFix(PackageLoadContext lpparam) {
         try {
             Class<?> embeddedDecorClass = findClassFirst(lpparam.classLoader,
                     EMBEDDED_VIEW_DECOR, "com.oplus.flexiblewindow.EmbeddedViewDecor");
@@ -1144,7 +829,7 @@ public final class PsCanvasHooks {
      * Section D — restore 502 tap behavior: no ThreeSplitAnimManager shrink/enlarge on single-finger
      * touch in panorama 3-split; five-finger pinch uses canvas sync-shrink (Section E).
      */
-    private static void hook502ThreeSplitTouchRestore(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hook502ThreeSplitTouchRestore(PackageLoadContext lpparam) {
         Class<?> animManagerClass = findClassFirst(lpparam.classLoader, "x1.x", "X1.x");
         if (animManagerClass != null) {
             hookVoidWhenPanoramaTouch(animManagerClass, "H0", lpparam, "resetAll");
@@ -1158,7 +843,7 @@ public final class PsCanvasHooks {
                         PsCanvasLog.d("blocked ThreeSplitAnimManager initialDragAnimation in panorama");
                         return false;
                     }
-                    return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args);
+                    return hookRuntime.invokeOriginalMethod(param.method, param.thisObject, param.args);
                 });
             } catch (Throwable throwable) {
                 PsCanvasLog.e("hook502ThreeSplitTouchRestore y0 failed", throwable);
@@ -1195,12 +880,12 @@ public final class PsCanvasHooks {
     }
 
     /** Peek slot tap: pan into view via ContainerView.V when 700 would only adapter.H. */
-    private static void hookPanoramaPeekFocusRestore(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookPanoramaPeekFocusRestore(PackageLoadContext lpparam) {
         try {
-            XposedHelpers.findAndHookMethod(ADAPTER, lpparam.classLoader, "H",
-                    Integer.TYPE, new XC_MethodHook() {
+            hookRuntime.findAndHookMethod(ADAPTER, lpparam.classLoader, "H",
+                    Integer.TYPE, new HookCallback() {
                         @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
+                        protected void beforeHookedMethod(HookCall param) {
                             int index = (Integer) param.args[0];
                             if (ThreeSplitTouch502Compat.redirectGestureFocusToPan(param.thisObject, index)) {
                                 param.setResult(null);
@@ -1214,11 +899,29 @@ public final class PsCanvasHooks {
     }
 
     private static void hookVoidWhenPanoramaTouch(Class<?> targetClass, String methodName,
-                                                  XC_LoadPackage.LoadPackageParam lpparam,
-                                                  String logLabel, Class<?>... parameterTypes) {
+                                                   PackageLoadContext lpparam,
+                                                   String logLabel, Class<?>... parameterTypes) {
+        hookVoidWhenPanoramaTouchCore(targetClass, methodName, lpparam, logLabel,
+                null, null, null, parameterTypes);
+    }
+
+    private static void hookVoidWhenPanoramaTouch(Class<?> targetClass, String methodName,
+                                                   PackageLoadContext lpparam,
+                                                   String logLabel, HookRegistry hookRegistry,
+                                                   String hookId, String detail,
+                                                   Class<?>... parameterTypes) {
+        hookVoidWhenPanoramaTouchCore(targetClass, methodName, lpparam, logLabel,
+                hookRegistry, hookId, detail, parameterTypes);
+    }
+
+    private static void hookVoidWhenPanoramaTouchCore(Class<?> targetClass, String methodName,
+                                                       PackageLoadContext lpparam,
+                                                       String logLabel,
+                                                       HookRegistry hookRegistry,
+                                                       String hookId, String detail,
+                                                       Class<?>[] parameterTypes) {
         try {
-            XposedHelpers.findAndHookMethod(targetClass, methodName, buildBeforeHookArgs(
-                    parameterTypes,
+            Object[] hookArgs = buildBeforeHookArgs(parameterTypes,
                     param -> {
                         Object holder = param.thisObject;
                         if (SplitPolicyCompat.inTransition()) {
@@ -1233,8 +936,15 @@ public final class PsCanvasHooks {
                                     + " in panorama 3-split");
                             param.setResult(null);
                         }
-                    }));
+                    });
+            hookRuntime.findAndHookMethod(hookId, targetClass, methodName, hookArgs);
+            if (hookRegistry != null) {
+                markHookInstalled(hookRegistry, hookId, detail);
+            }
         } catch (Throwable throwable) {
+            if (hookRegistry != null) {
+                markHookFailed(hookRegistry, hookId, detail, throwable);
+            }
             PsCanvasLog.e("hook502ThreeSplitTouchRestore " + targetClass.getName()
                     + "." + methodName + " failed", throwable);
         }
@@ -1243,9 +953,9 @@ public final class PsCanvasHooks {
     private static Object[] buildBeforeHookArgs(Class<?>[] parameterTypes, HookBefore body) {
         Object[] args = new Object[parameterTypes.length + 1];
         System.arraycopy(parameterTypes, 0, args, 0, parameterTypes.length);
-        args[parameterTypes.length] = new XC_MethodHook() {
+        args[parameterTypes.length] = new HookCallback() {
             @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+            protected void beforeHookedMethod(HookCall param) throws Throwable {
                 body.run(param);
             }
         };
@@ -1280,7 +990,7 @@ public final class PsCanvasHooks {
                 PsCanvasLog.d("pinch end fallback: forcing g0 state=" + state);
                 try {
                     prepareSplitPolicyForNotify(policy);
-                    XposedHelpers.callMethod(policy, "g0");
+                    reflectionAccess.callMethod(policy, "g0");
                 } catch (Throwable throwable) {
                     PsCanvasLog.e("pinch end fallback g0 failed", throwable);
                 }
@@ -1309,39 +1019,39 @@ public final class PsCanvasHooks {
     }
 
     /** PanoramaHooks — 502 split display (layout 3→4); independent of pinch transition. */
-    private static void hookTwoColumnPanoramaRestoreCore(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookTwoColumnPanoramaRestoreCore(PackageLoadContext lpparam) {
         try {
-            XposedHelpers.findAndHookMethod(Intent.class, "putExtra", String.class, boolean.class,
-                    new XC_MethodHook() {
+            hookRuntime.findAndHookMethod(Intent.class, "putExtra", String.class, boolean.class,
+                    new HookCallback() {
                         @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
+                        protected void beforeHookedMethod(HookCall param) {
                             if ("isThreeSplitTogether".equals(param.args[0])
                                     && Boolean.TRUE.equals(param.args[1])) {
                                 param.setResult(param.thisObject);
-                                XposedBridge.log(TAG + ": blocked Intent isThreeSplitTogether");
+                                PsCanvasLog.d("blocked Intent isThreeSplitTogether");
                             }
                         }
                     });
         } catch (Throwable t) {
-            XposedBridge.log(TAG + ": Intent.putExtra hook failed: " + t);
+            PsCanvasLog.e("Intent.putExtra hook failed:", t);
         }
 
         replaceMethod(lpparam, "com.oplus.pscanvas.canvasmode.canvas.r0", "O",
                 new Class[]{boolean.class}, param -> {
                     param.args[0] = false;
-                    return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args);
+                    return hookRuntime.invokeOriginalMethod(param.method, param.thisObject, param.args);
                 });
 
         hookAdapterLayoutMethods(lpparam);
     }
 
     /** u1.c is in primary dex — panorama layout remap only outside transition. */
-    private static void hookAdapterLayoutMethods(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookAdapterLayoutMethods(PackageLoadContext lpparam) {
         replaceMethod(lpparam, ADAPTER, "n", new Class[0], param ->
-                remapThreeSplitLayout(param.thisObject, (Integer) XposedBridge.invokeOriginalMethod(
+                remapThreeSplitLayout(param.thisObject, (Integer) hookRuntime.invokeOriginalMethod(
                         param.method, param.thisObject, param.args)));
         replaceMethod(lpparam, ADAPTER, "t", new Class[0], param ->
-                remapThreeSplitLayout(param.thisObject, (Integer) XposedBridge.invokeOriginalMethod(
+                remapThreeSplitLayout(param.thisObject, (Integer) hookRuntime.invokeOriginalMethod(
                         param.method, param.thisObject, param.args)));
     }
 
@@ -1350,7 +1060,7 @@ public final class PsCanvasHooks {
             return layout;
         }
         try {
-            int count = (Integer) XposedHelpers.callMethod(adapter, "getCount");
+            int count = (Integer) reflectionAccess.callMethod(adapter, "getCount");
             if (count == 3) {
                 // Layout 3 = three side-by-side (700 three-split-together).
                 // e3(i3=3) callback is blocked separately to prevent equal-column
@@ -1362,35 +1072,35 @@ public final class PsCanvasHooks {
         return layout;
     }
 
-    private static void hookTwoColumnPanoramaRestoreDeferred(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookTwoColumnPanoramaRestoreDeferred(PackageLoadContext lpparam) {
         Class<?> adapterClass = findClassFirst(lpparam.classLoader, ADAPTER, "u1.C0600c");
         if (adapterClass == null) {
             return;
         }
 
         replaceMethod(lpparam, ADAPTER, "A", new Class[0], param -> {
-            int count = (Integer) XposedHelpers.callMethod(param.thisObject, "getCount");
+            int count = (Integer) reflectionAccess.callMethod(param.thisObject, "getCount");
             if (count == 3) {
                 return false;
             }
-            return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args);
+            return hookRuntime.invokeOriginalMethod(param.method, param.thisObject, param.args);
         });
 
         hookBeforeMethod(lpparam, ADAPTER, "M", new Class[]{Integer.TYPE}, param -> {
-            int count = (Integer) XposedHelpers.callMethod(param.thisObject, "getCount");
+            int count = (Integer) reflectionAccess.callMethod(param.thisObject, "getCount");
             if (count == 3 && (Integer) param.args[0] == 3) {
                 param.args[0] = 0;
-                XposedBridge.log(TAG + ": M(3) -> M(0) for 3-app layout");
+                PsCanvasLog.d("M(3) -> M(0) for 3-app layout");
             }
         });
 
         hookBeforeMethod(lpparam, ADAPTER, "T",
                 new Class[]{Boolean.TYPE, Boolean.TYPE, Boolean.TYPE}, param -> {
-                    int count = (Integer) XposedHelpers.callMethod(param.thisObject, "getCount");
+                    int count = (Integer) reflectionAccess.callMethod(param.thisObject, "getCount");
                     int layout = ObfFieldCompat.getInt(param.thisObject, ObfFieldCompat.ADAPTER_LAYOUT, "f13788f");
                     if (count == 3 && layout == 3) {
                         ObfFieldCompat.setInt(param.thisObject, ObfFieldCompat.ADAPTER_LAYOUT, "f13788f", 0);
-                        XposedBridge.log(TAG + ": T() unblocked, layout 3 -> 0");
+                        PsCanvasLog.d("T() unblocked, layout 3 -> 0");
                     }
                 });
 
@@ -1398,9 +1108,9 @@ public final class PsCanvasHooks {
         // layout calculation so onEnterThreeSplitTogether never fires.
         hookBeforeMethod(lpparam, ADAPTER, "f", new Class[]{Boolean.TYPE}, param -> {
             try {
-                Object callback = XposedHelpers.getObjectField(param.thisObject, "f13801s");
+                Object callback = reflectionAccess.getObjectField(param.thisObject, "f13801s");
                 if (callback != null) {
-                    XposedHelpers.setObjectField(param.thisObject, "f13801s", null);
+                    reflectionAccess.setObjectField(param.thisObject, "f13801s", null);
                     PsCanvasLog.d("f() beforeHook: nulled three-split callback f13801s");
                 }
             } catch (Throwable ignored) {
@@ -1415,21 +1125,21 @@ public final class PsCanvasHooks {
             hookAfterMethod(lpparam, "B1.e", "c",
                     new Class[]{adapterClass, Integer.TYPE, Integer.TYPE, Boolean.TYPE}, param -> {
                         Object adapter = param.args[0];
-                        int count = (Integer) XposedHelpers.callMethod(adapter, "getCount");
+                        int count = (Integer) reflectionAccess.callMethod(adapter, "getCount");
                         int layout = (Integer) param.getResult();
                         if (count == 3 && layout == 3) {
                             // Keep layout 3 — panorama mode (F0=true) handles peek effect
                             // e3(i3=3) callback is blocked separately
-                            XposedBridge.log(TAG + ": B1.e.c() layout 3 kept (e3 blocked)");
+                            PsCanvasLog.d("B1.e.c() layout 3 kept (e3 blocked)");
                         }
                     });
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": B1.e.c hook failed: " + throwable);
+            PsCanvasLog.e("B1.e.c hook failed:", throwable);
         }
     }
 
     private static void ensureTwoColumnLayout(Object adapter, String source) {
-        int count = (Integer) XposedHelpers.callMethod(adapter, "getCount");
+        int count = (Integer) reflectionAccess.callMethod(adapter, "getCount");
         if (count != 3) {
             return;
         }
@@ -1437,16 +1147,16 @@ public final class PsCanvasHooks {
         if (layout == 3) {
             // Keep layout 3 — e3 callback blocks equal-column setup,
             // panorama F0=true handles wide canvas for peek effect
-            XposedBridge.log(TAG + ": " + source + " layout 3 kept (panorama peek)");
+            PsCanvasLog.d(source + " layout 3 kept (panorama peek)");
         }
         if (gestureManagerClass != null) {
             try {
-                Object context = XposedHelpers.callMethod(adapter, "getContext");
-                Object activity = XposedHelpers.callStaticMethod(
-                        XposedHelpers.findClass(UTIL, adapter.getClass().getClassLoader()),
+                Object context = reflectionAccess.callMethod(adapter, "getContext");
+                Object activity = reflectionAccess.callStaticMethod(
+                        reflectionAccess.findClass(UTIL, adapter.getClass().getClassLoader()),
                         "O1", context);
                 Object containerView = activity != null
-                        ? XposedHelpers.callMethod(activity, "v0") : null;
+                        ? reflectionAccess.callMethod(activity, "v0") : null;
                 ThreeSplitTouch502Compat.syncGestureSplitFlagForThreeApp(
                         gestureManagerClass, containerView);
             } catch (Throwable ignored) {
@@ -1454,46 +1164,61 @@ public final class PsCanvasHooks {
         }
     }
 
-    private static void hookBeforeMethod(XC_LoadPackage.LoadPackageParam lpparam, String className,
+    private static void hookBeforeMethod(PackageLoadContext lpparam, String className,
                                          String methodName, Class<?>[] parameterTypes,
                                          HookBefore body) {
+        hookBeforeMethod(lpparam, className, methodName, parameterTypes, body,
+                null, null, null);
+    }
+
+    private static void hookBeforeMethod(PackageLoadContext lpparam, String className,
+                                         String methodName, Class<?>[] parameterTypes,
+                                         HookBefore body, HookRegistry hookRegistry,
+                                         String hookId, String detail) {
         try {
             Object[] args = new Object[parameterTypes.length + 1];
             System.arraycopy(parameterTypes, 0, args, 0, parameterTypes.length);
-            args[parameterTypes.length] = new XC_MethodHook() {
+            args[parameterTypes.length] = new HookCallback() {
                 @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                protected void beforeHookedMethod(HookCall param) throws Throwable {
                     body.run(param);
                 }
             };
-            XposedHelpers.findAndHookMethod(className, lpparam.classLoader, methodName, args);
+            hookRuntime.findAndHookMethod(
+                    hookId, className, lpparam.classLoader, methodName, args);
+            if (hookRegistry != null) {
+                markHookInstalled(hookRegistry, hookId, detail);
+            }
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": failed beforeHook " + className + "." + methodName + ": " + throwable);
+            if (hookRegistry != null) {
+                markHookFailed(hookRegistry, hookId, detail, throwable);
+            }
+            PsCanvasLog.e("failed beforeHook " + className + "." + methodName + ":", throwable);
         }
     }
 
-    private static void hookAfterMethod(XC_LoadPackage.LoadPackageParam lpparam, String className,
+    private static void hookAfterMethod(PackageLoadContext lpparam, String className,
                                         String methodName, Class<?>[] parameterTypes,
                                         HookAfter body) {
         try {
             Object[] args = new Object[parameterTypes.length + 1];
             System.arraycopy(parameterTypes, 0, args, 0, parameterTypes.length);
-            args[parameterTypes.length] = new XC_MethodHook() {
+            args[parameterTypes.length] = new HookCallback() {
                 @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                protected void afterHookedMethod(HookCall param) throws Throwable {
                     body.run(param);
                 }
             };
-            XposedHelpers.findAndHookMethod(className, lpparam.classLoader, methodName, args);
+            hookRuntime.findAndHookMethod(className, lpparam.classLoader, methodName, args);
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": failed afterHook " + className + "." + methodName + ": " + throwable);
+            PsCanvasLog.e("failed afterHook " + className + "." + methodName + ":", throwable);
         }
     }
 
-    private static void hookScaleListener502(XC_LoadPackage.LoadPackageParam lpparam, Class<?> gestureClass) {
-        XC_MethodHook touchPrepHook = new XC_MethodHook() {
+    private static void hookScaleListener502(PackageLoadContext lpparam, Class<?> gestureClass) {
+        HookCallback touchPrepHook = new HookCallback() {
             @Override
-            protected void beforeHookedMethod(MethodHookParam param) {
+            protected void beforeHookedMethod(HookCall param) {
                 MotionEvent event = (MotionEvent) param.args[0];
                 lastGestureTouchAction.set(event.getActionMasked());
                 if (event.getPointerCount() > 3) {
@@ -1503,16 +1228,16 @@ public final class PsCanvasHooks {
             }
         };
         try {
-            XposedHelpers.findAndHookMethod(gestureClass, "T", MotionEvent.class, touchPrepHook);
+            hookRuntime.findAndHookMethod(gestureClass, "T", MotionEvent.class, touchPrepHook);
             PsCanvasLog.i("hookScaleListener502 T prep installed on " + gestureClass.getName());
         } catch (Throwable throwable) {
             PsCanvasLog.e("hookScaleListener502 T failed", throwable);
         }
 
-        XC_MethodHook scaleBeginHook = new XC_MethodHook() {
+        HookCallback scaleBeginHook = new HookCallback() {
             @Override
-            protected void beforeHookedMethod(MethodHookParam param) {
-                Object outer = XposedHelpers.getObjectField(param.thisObject, "this$0");
+            protected void beforeHookedMethod(HookCall param) {
+                Object outer = reflectionAccess.getObjectField(param.thisObject, "this$0");
                 if (outer == null) {
                     return;
                 }
@@ -1523,8 +1248,8 @@ public final class PsCanvasHooks {
             }
 
             @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                Object outer = XposedHelpers.getObjectField(param.thisObject, "this$0");
+            protected void afterHookedMethod(HookCall param) {
+                Object outer = reflectionAccess.getObjectField(param.thisObject, "this$0");
                 if (outer == null) {
                     return;
                 }
@@ -1556,10 +1281,10 @@ public final class PsCanvasHooks {
             }
         };
 
-        XC_MethodHook scaleHook = new XC_MethodHook() {
+        HookCallback scaleHook = new HookCallback() {
             @Override
-            protected void beforeHookedMethod(MethodHookParam param) {
-                Object outer = XposedHelpers.getObjectField(param.thisObject, "this$0");
+            protected void beforeHookedMethod(HookCall param) {
+                Object outer = reflectionAccess.getObjectField(param.thisObject, "this$0");
                 if (outer == null) {
                     return;
                 }
@@ -1577,10 +1302,10 @@ public final class PsCanvasHooks {
             }
         };
 
-        XC_MethodHook scaleEndHook = new XC_MethodHook() {
+        HookCallback scaleEndHook = new HookCallback() {
             @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                Object outer = XposedHelpers.getObjectField(param.thisObject, "this$0");
+            protected void afterHookedMethod(HookCall param) {
+                Object outer = reflectionAccess.getObjectField(param.thisObject, "this$0");
                 if (outer != null) {
                     Object containerView = ThreeSplitTouch502Compat.getGestureContainerView(outer);
                     if (!ThreeSplitTouch502Compat.shouldUseCanvasSyncPinch(containerView)) {
@@ -1594,11 +1319,11 @@ public final class PsCanvasHooks {
         int hooked = 0;
         for (Class<?> inner : gestureClass.getDeclaredClasses()) {
             try {
-                XposedHelpers.findAndHookMethod(inner, "onScaleBegin",
+                hookRuntime.findAndHookMethod(inner, "onScaleBegin",
                         ScaleGestureDetector.class, scaleBeginHook);
-                XposedHelpers.findAndHookMethod(inner, "onScale",
+                hookRuntime.findAndHookMethod(inner, "onScale",
                         ScaleGestureDetector.class, scaleHook);
-                XposedHelpers.findAndHookMethod(inner, "onScaleEnd",
+                hookRuntime.findAndHookMethod(inner, "onScaleEnd",
                         ScaleGestureDetector.class, scaleEndHook);
                 hooked++;
                 PsCanvasLog.i("hookScaleListener502 scale hooks on " + inner.getName());
@@ -1608,13 +1333,13 @@ public final class PsCanvasHooks {
         if (hooked == 0) {
             for (String suffix : new String[]{"$c", "$C", "$b"}) {
                 try {
-                    Class<?> listenerClass = XposedHelpers.findClass(
+                    Class<?> listenerClass = reflectionAccess.findClass(
                             gestureClass.getName() + suffix, lpparam.classLoader);
-                    XposedHelpers.findAndHookMethod(listenerClass, "onScaleBegin",
+                    hookRuntime.findAndHookMethod(listenerClass, "onScaleBegin",
                             ScaleGestureDetector.class, scaleBeginHook);
-                    XposedHelpers.findAndHookMethod(listenerClass, "onScale",
+                    hookRuntime.findAndHookMethod(listenerClass, "onScale",
                             ScaleGestureDetector.class, scaleHook);
-                    XposedHelpers.findAndHookMethod(listenerClass, "onScaleEnd",
+                    hookRuntime.findAndHookMethod(listenerClass, "onScaleEnd",
                             ScaleGestureDetector.class, scaleEndHook);
                     hooked++;
                     PsCanvasLog.i("hookScaleListener502 scale hooks on " + listenerClass.getName());
@@ -1628,18 +1353,18 @@ public final class PsCanvasHooks {
         }
     }
 
-    private static void hookWindowConfigUtils(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookWindowConfigUtils(PackageLoadContext lpparam) {
         replaceMethod(lpparam, CONFIG, "h", new Class[]{Context.class},
                 param -> ConfigCompat.getMaxHeight((Context) param.args[0]));
         replaceMethod(lpparam, CONFIG, "j", new Class[]{Context.class},
                 param -> ConfigCompat.getMaxWidth((Context) param.args[0]));
     }
 
-    private static void hookActivityTaskManagerCallers(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookActivityTaskManagerCallers(PackageLoadContext lpparam) {
         replaceMethod(lpparam, UTIL, "E", new Class[]{Integer.TYPE}, param -> {
             int taskId = (Integer) param.args[0];
             for (Object task : AtmCompat.getTasks(lpparam.classLoader, 5, true)) {
-                if (XposedHelpers.getIntField(task, "taskId") == taskId) {
+                if (reflectionAccess.getIntField(task, "taskId") == taskId) {
                     return task;
                 }
             }
@@ -1649,25 +1374,25 @@ public final class PsCanvasHooks {
         hookWithAtmFallback(lpparam, UTIL, "i", List.class);
     }
 
-    private static void hookWithAtmFallback(XC_LoadPackage.LoadPackageParam lpparam,
+    private static void hookWithAtmFallback(PackageLoadContext lpparam,
                                             String className, String methodName, Class<?>... parameterTypes) {
         replaceMethod(lpparam, className, methodName, parameterTypes, param -> {
             try {
-                return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args);
+                return hookRuntime.invokeOriginalMethod(param.method, param.thisObject, param.args);
             } catch (Throwable throwable) {
                 if (!isAtmCompatError(throwable)) {
                     throw throwable;
                 }
-                XposedBridge.log(TAG + ": ATM compat fallback for " + className + "." + methodName);
+                PsCanvasLog.d("ATM compat fallback for " + className + "." + methodName);
                 if ("r1.f".equals(className) && "p".equals(methodName)) {
-                    XposedHelpers.setBooleanField(param.thisObject, "c", false);
+                    reflectionAccess.setBooleanField(param.thisObject, "c", false);
                 }
                 return defaultValue(asMethod(param.method));
             }
         });
     }
 
-    private static void hookSplitToFlexibleTransition(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookSplitToFlexibleTransition(PackageLoadContext lpparam) {
         replaceMethod(lpparam, UTIL, "n", new Class[]{List.class, Integer.TYPE, Bundle.class}, param -> {
             List<?> intents = (List<?>) param.args[0];
             Bundle bundle = (Bundle) param.args[2];
@@ -1677,7 +1402,7 @@ public final class PsCanvasHooks {
             }
             Context context = extractContext(param.thisObject, param.args);
             FlexibleTransitionCompat.injectDisplayBoundsIntoIntents(intents, context);
-            Object result = XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args);
+            Object result = hookRuntime.invokeOriginalMethod(param.method, param.thisObject, param.args);
             if (result instanceof Bundle) {
                 return FlexibleTransitionCompat.fixLaunchBoundsBundle((Bundle) result, context);
             }
@@ -1686,7 +1411,7 @@ public final class PsCanvasHooks {
 
         replaceMethod(lpparam, SSTO_FLEX, "J", new Class[0], param -> {
             FlexibleTransitionCompat.resetEarlySplitZoom();
-            Object result = XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args);
+            Object result = hookRuntime.invokeOriginalMethod(param.method, param.thisObject, param.args);
             PinchTransition502Compat.syncLiveLayoutOrient(param.thisObject);
             SplitPolicyCompat.rememberEmbeddedTaskIds(param.thisObject);
             return result;
@@ -1701,12 +1426,12 @@ public final class PsCanvasHooks {
             PinchTransition502Compat.syncLiveLayoutOrient(splitPolicy);
             SplitPolicyCompat.sanitizeTransitionEntries(splitPolicy, context);
             try {
-                boolean toggleReturned = (Boolean) XposedBridge.invokeOriginalMethod(
+                boolean toggleReturned = (Boolean) hookRuntime.invokeOriginalMethod(
                         param.method, param.thisObject, param.args);
                 return FlexibleTransitionCompat.evaluateTransitionResult(
                         param.thisObject, toggleReturned, lpparam.classLoader);
             } catch (Throwable throwable) {
-                XposedBridge.log(TAG + ": x1.r.s0 original failed: " + throwable);
+                PsCanvasLog.e("x1.r.s0 original failed:", throwable);
                 FlexibleTransitionCompat.markTransitionSucceeded(false);
                 return false;
             }
@@ -1745,7 +1470,7 @@ public final class PsCanvasHooks {
                                 + java.util.Arrays.toString((int[]) param.args[0]));
                     }
                     try {
-                        Object result = XposedBridge.invokeOriginalMethod(
+                        Object result = hookRuntime.invokeOriginalMethod(
                                 param.method, param.thisObject, param.args);
                         PsCanvasLog.d("toggleMultiFlexibleWindowFromCanvas returned " + result);
                         return result;
@@ -1760,40 +1485,40 @@ public final class PsCanvasHooks {
     }
 
     /** 700 uses C1() for canvas removeTask; 502 used w1(). Hook both. */
-    private static void hookCanvasTaskRemoval(XC_LoadPackage.LoadPackageParam lpparam, String methodName) {
+    private static void hookCanvasTaskRemoval(PackageLoadContext lpparam, String methodName) {
         replaceMethod(lpparam, CONTAINER_ACTIVITY, methodName, new Class[0], param -> {
             if (!FlexibleTransitionCompat.wasLastTransitionSucceeded()) {
-                XposedBridge.log(TAG + ": " + methodName + " removeTask skipped, transition not verified");
+                PsCanvasLog.w(methodName + " removeTask skipped, transition not verified");
                 return null;
             }
             if (FlexibleTransitionCompat.wasZoomFallbackUsed()) {
-                XposedBridge.log(TAG + ": " + methodName + " removeTask skipped, zoom settle handles it");
+                PsCanvasLog.d(methodName + " removeTask skipped, zoom settle handles it");
                 return null;
             }
-            final int taskId = (Integer) XposedHelpers.callMethod(param.thisObject, "u0");
+            final int taskId = (Integer) reflectionAccess.callMethod(param.thisObject, "u0");
             final ClassLoader classLoader = lpparam.classLoader;
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 if (!AtmCompat.removeTask(classLoader, taskId)) {
-                    XposedBridge.log(TAG + ": " + methodName + " removeTask skipped, ATM unavailable");
+                    PsCanvasLog.w(methodName + " removeTask skipped, ATM unavailable");
                 }
             }, 600L);
             return null;
         });
     }
 
-    private static void hookDirectWindowConfigurationAccess(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookDirectWindowConfigurationAccess(PackageLoadContext lpparam) {
         replaceMethod(lpparam, UTIL, "o0",
                 new Class[]{Context.class, List.class, Integer.TYPE},
                 param -> {
                     try {
-                        return XposedBridge.invokeOriginalMethod(
+                        return hookRuntime.invokeOriginalMethod(
                                 param.method, param.thisObject, param.args);
                     } catch (Throwable throwable) {
                         if (!isWindowConfigError(throwable)) {
                             throw throwable;
                         }
                         Context context = (Context) param.args[0];
-                        XposedBridge.log(TAG + ": o0 windowConfiguration compat fallback");
+                        PsCanvasLog.d("o0 windowConfiguration compat fallback");
                         return I0Compat.run(
                                 context,
                                 (List<?>) param.args[1],
@@ -1809,7 +1534,7 @@ public final class PsCanvasHooks {
         hookWithConfigFallback(lpparam, CONTAINER_VIEW, "H2", Boolean.TYPE);
     }
 
-    private static void hookWithConfigFallback(XC_LoadPackage.LoadPackageParam lpparam,
+    private static void hookWithConfigFallback(PackageLoadContext lpparam,
                                                String className, String methodName, Object... parameterTypes) {
         Class<?>[] paramTypes = new Class[parameterTypes.length];
         for (int i = 0; i < parameterTypes.length; i++) {
@@ -1817,24 +1542,24 @@ public final class PsCanvasHooks {
             if (type instanceof Class) {
                 paramTypes[i] = (Class<?>) type;
             } else {
-                paramTypes[i] = XposedHelpers.findClass((String) type, lpparam.classLoader);
+                paramTypes[i] = reflectionAccess.findClass((String) type, lpparam.classLoader);
             }
         }
         replaceMethod(lpparam, className, methodName, paramTypes, param -> {
             try {
-                return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args);
+                return hookRuntime.invokeOriginalMethod(param.method, param.thisObject, param.args);
             } catch (Throwable throwable) {
                 if (!isWindowConfigError(throwable)) {
                     throw throwable;
                 }
-                XposedBridge.log(TAG + ": windowConfiguration compat for " + className + "." + methodName);
+                PsCanvasLog.d("windowConfiguration compat for " + className + "." + methodName);
                 return handleConfigFallback(className, methodName, param, lpparam.classLoader);
             }
         });
     }
 
     private static Object handleConfigFallback(String className, String methodName,
-                                               XC_MethodHook.MethodHookParam param, ClassLoader classLoader) {
+                                               HookCall param, ClassLoader classLoader) {
         Context context = extractContext(param.thisObject, param.args);
         if (CONTAINER_ACTIVITY.equals(className) && "onCreate".equals(methodName)) {
             finishContainerActivityOnCreateTail(param.thisObject, context);
@@ -1860,20 +1585,20 @@ public final class PsCanvasHooks {
         }
         Configuration configuration = context.getResources().getConfiguration();
         setRectField(activity, "f10263l", ConfigCompat.getBounds(configuration, context));
-        XposedHelpers.setIntField(activity, "f10231M", configuration.densityDpi);
+        reflectionAccess.setIntField(activity, "f10231M", configuration.densityDpi);
         ClassLoader classLoader = context.getClassLoader();
         try {
-            XposedHelpers.setObjectField(activity, "f10267n",
-                    XposedHelpers.callStaticMethod(
-                            XposedHelpers.findClass(
+            reflectionAccess.setObjectField(activity, "f10267n",
+                    reflectionAccess.callStaticMethod(
+                            reflectionAccess.findClass(
                                     "com.oplus.flexiblewindow.FlexibleWindowManager", classLoader),
                             "getInstance"));
-            Class<?> callbackClass = XposedHelpers.findClass(
+            Class<?> callbackClass = reflectionAccess.findClass(
                     CONTAINER_ACTIVITY + "$EmbeddedWindowCallback", classLoader);
-            XposedHelpers.setObjectField(activity, "f10269o",
-                    XposedHelpers.newInstance(callbackClass, activity));
+            reflectionAccess.setObjectField(activity, "f10269o",
+                    reflectionAccess.newInstance(callbackClass, activity));
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": onCreate tail init failed: " + throwable);
+            PsCanvasLog.e("onCreate tail init failed:", throwable);
         }
         safeCall(activity, "b2");
         safeCall(activity, "P1");
@@ -1888,8 +1613,8 @@ public final class PsCanvasHooks {
             return;
         }
         setRectField(activity, "f10263l", ConfigCompat.getBounds(configuration, context));
-        XposedHelpers.setIntField(activity, "f10231M", configuration.densityDpi);
-        XposedHelpers.setBooleanField(activity, "f10245a0", false);
+        reflectionAccess.setIntField(activity, "f10231M", configuration.densityDpi);
+        reflectionAccess.setBooleanField(activity, "f10245a0", false);
     }
 
     private static ClassLoader resolveClassLoader(Context context, ClassLoader fallback) {
@@ -1905,26 +1630,49 @@ public final class PsCanvasHooks {
         }
         int width = ConfigCompat.getMaxWidth(context);
         int height = ConfigCompat.getMaxHeight(context);
-        XposedHelpers.setIntField(controller, "f10629G", width);
-        XposedHelpers.setIntField(controller, "f10630H", height);
+        reflectionAccess.setIntField(controller, "f10629G", width);
+        reflectionAccess.setIntField(controller, "f10630H", height);
     }
 
-    private static void replaceMethod(XC_LoadPackage.LoadPackageParam lpparam, String className,
+    private static void replaceMethod(PackageLoadContext lpparam, String className,
                                       String methodName, Class<?>[] parameterTypes, HookBody body) {
+        replaceMethodCore(lpparam, className, methodName, parameterTypes, body,
+                null, null, null);
+    }
+
+    private static void replaceMethod(PackageLoadContext lpparam, String className,
+                                      String methodName, Class<?>[] parameterTypes, HookBody body,
+                                      HookRegistry hookRegistry, String hookId, String detail) {
+        replaceMethodCore(lpparam, className, methodName, parameterTypes, body,
+                hookRegistry, hookId, detail);
+    }
+
+    private static void replaceMethodCore(PackageLoadContext lpparam,
+                                          String className, String methodName,
+                                          Class<?>[] parameterTypes, HookBody body,
+                                          HookRegistry hookRegistry, String hookId,
+                                          String detail) {
         try {
-            XposedHelpers.findAndHookMethod(className, lpparam.classLoader, methodName,
-                    buildHookArgs(parameterTypes, body));
+            Object[] hookArgs = buildHookArgs(parameterTypes, body);
+            hookRuntime.findAndHookMethod(
+                    hookId, className, lpparam.classLoader, methodName, hookArgs);
+            if (hookRegistry != null) {
+                markHookInstalled(hookRegistry, hookId, detail);
+            }
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": failed to hook " + className + "." + methodName + ": " + throwable);
+            if (hookRegistry != null) {
+                markHookFailed(hookRegistry, hookId, detail, throwable);
+            }
+            PsCanvasLog.e("failed to hook " + className + "." + methodName + ":", throwable);
         }
     }
 
     private static Object[] buildHookArgs(Class<?>[] parameterTypes, HookBody body) {
         Object[] args = new Object[parameterTypes.length + 1];
         System.arraycopy(parameterTypes, 0, args, 0, parameterTypes.length);
-        args[parameterTypes.length] = new XC_MethodReplacement() {
+        args[parameterTypes.length] = new HookReplacement() {
             @Override
-            protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+            protected Object replaceHookedMethod(HookCall param) throws Throwable {
                 return body.run(param);
             }
         };
@@ -1933,18 +1681,18 @@ public final class PsCanvasHooks {
 
     private static void safeCall(Object target, String methodName, Object... args) {
         try {
-            XposedHelpers.callMethod(target, methodName, args);
+            reflectionAccess.callMethod(target, methodName, args);
         } catch (Throwable throwable) {
-            XposedBridge.log(TAG + ": " + methodName + "() failed: " + throwable);
+            PsCanvasLog.e(methodName + "() failed:", throwable);
         }
     }
 
     private static void setRectField(Object target, String fieldName, Rect bounds) {
-        Object rectField = XposedHelpers.getObjectField(target, fieldName);
+        Object rectField = reflectionAccess.getObjectField(target, fieldName);
         if (rectField instanceof Rect) {
             ((Rect) rectField).set(bounds);
         } else {
-            XposedHelpers.setObjectField(target, fieldName, new Rect(bounds));
+            reflectionAccess.setObjectField(target, fieldName, new Rect(bounds));
         }
     }
 
@@ -2028,144 +1776,6 @@ public final class PsCanvasHooks {
      * aspect-fit letterboxing. The later 700-only layout/drag paths remain
      * blocked so they cannot override the 502 panorama behavior.
      */
-    private static void hookBlockThreeSplitTogether(XC_LoadPackage.LoadPackageParam lpparam) {
-        // A live 2-to-3 conversion focuses the newly-added third task. On layout
-        // 3 that makes ContainerView.T select lineLayoutFocusSide=2 and pans the
-        // wide canvas to the right. Mark only this transition, then redirect its
-        // one automatic app-enter focus pass to index 0 (the 502 left anchor).
-        try {
-            XposedHelpers.findAndHookMethod(
-                    CONTAINER_VIEW, lpparam.classLoader, "e3",
-                    android.content.Context.class, List.class, Integer.TYPE,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            int targetLayout = (Integer) param.args[2];
-                            List<?> tasks = (List<?>) param.args[1];
-                            if (!param.hasThrowable() && targetLayout == 3
-                                    && tasks != null && tasks.size() == 3) {
-                                XposedHelpers.setAdditionalInstanceField(param.thisObject,
-                                        NEW_THREE_SPLIT_LEFT_ANCHOR, Boolean.TRUE);
-                                PsCanvasLog.d("260608 marked new 2-to-3 canvas for left anchor");
-                            }
-                        }
-                    });
-            PsCanvasLog.i("260608 new three-split anchor marker installed on ContainerView.e3");
-        } catch (Throwable t) {
-            PsCanvasLog.e("260608 new three-split anchor marker failed", t);
-        }
-
-        try {
-            XposedHelpers.findAndHookMethod(
-                    CONTAINER_VIEW, lpparam.classLoader, "R", Integer.TYPE,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            if ((Integer) param.args[0] != 2
-                                    || !Boolean.TRUE.equals(
-                                    XposedHelpers.getAdditionalInstanceField(param.thisObject,
-                                            NEW_THREE_SPLIT_LEFT_ANCHOR))
-                                    || !isNewTaskAppEnterAutoScale()) {
-                                return;
-                            }
-                            Object adapter = XposedHelpers.callMethod(
-                                    param.thisObject, "getAdapter");
-                            int count = (Integer) XposedHelpers.callMethod(adapter, "getCount");
-                            int layout = (Integer) XposedHelpers.callMethod(adapter, "n");
-                            if (count != 3 || layout != 3) {
-                                XposedHelpers.removeAdditionalInstanceField(param.thisObject,
-                                        NEW_THREE_SPLIT_LEFT_ANCHOR);
-                                return;
-                            }
-                            param.args[0] = 0;
-                            XposedHelpers.removeAdditionalInstanceField(param.thisObject,
-                                    NEW_THREE_SPLIT_LEFT_ANCHOR);
-                            PsCanvasLog.i("260608 redirected new three-split initial anchor "
-                                    + "from right to left");
-                        }
-                    });
-            PsCanvasLog.i("260608 new three-split left anchor installed on ContainerView.R");
-        } catch (Throwable t) {
-            PsCanvasLog.e("260608 new three-split left anchor failed", t);
-        }
-
-        // Block containerView.f3(List) — update resizable rects in three-split
-        try {
-            XposedHelpers.findAndHookMethod(
-                    CONTAINER_VIEW, lpparam.classLoader, "f3",
-                    List.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            SplitBar502Compat.blockF3(param);
-                        }
-                    });
-            PsCanvasLog.i("P0: hookBlockThreeSplitTogether f3 installed on ContainerView");
-        } catch (Throwable t) {
-            PsCanvasLog.e("P0: hookBlockThreeSplitTogether f3 failed", t);
-        }
-
-        // Block containerView.E2() — startScrollSplitBarInThreeSplit
-        try {
-            XposedHelpers.findAndHookMethod(
-                    CONTAINER_VIEW, lpparam.classLoader, "E2",
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            SplitBar502Compat.blockE2Entry(param);
-                        }
-                    });
-            PsCanvasLog.i("P0: hookBlockThreeSplitTogether E2 installed on ContainerView");
-        } catch (Throwable t) {
-            PsCanvasLog.e("P0: hookBlockThreeSplitTogether E2 failed", t);
-        }
-
-        // Block containerView.i2(List, float, float, E.c) — enlarge for three-split
-        try {
-            Class<?> eClass = findClassFirst(lpparam.classLoader,
-                    "com.oplus.pscanvas.canvasmode.canvas.E");
-            if (eClass == null) {
-                PsCanvasLog.w("P0: i2 hook skipped, E class not found");
-                return;
-            }
-            Class<?> eInnerC = null;
-            for (Class<?> inner : eClass.getDeclaredClasses()) {
-                if (inner.getSimpleName().equals("c")) {
-                    eInnerC = inner;
-                    break;
-                }
-            }
-            if (eInnerC == null) {
-                PsCanvasLog.w("P0: i2 hook skipped, E.c inner class not found");
-            } else {
-                XposedHelpers.findAndHookMethod(
-                        CONTAINER_VIEW, lpparam.classLoader, "i2",
-                        List.class, Float.TYPE, Float.TYPE, eInnerC,
-                        new XC_MethodHook() {
-                            @Override
-                            protected void beforeHookedMethod(MethodHookParam param) {
-                                SplitBar502Compat.blockI2(param);
-                            }
-                        });
-                PsCanvasLog.i("P0: hookBlockThreeSplitTogether i2 installed on ContainerView");
-            }
-        } catch (Throwable t) {
-            PsCanvasLog.e("P0: hookBlockThreeSplitTogether i2 failed", t);
-        }
-    }
-
-    private static boolean isNewTaskAppEnterAutoScale() {
-        StackTraceElement[] trace = Thread.currentThread().getStackTrace();
-        for (int index = 0; index < Math.min(trace.length, 20); index++) {
-            StackTraceElement frame = trace[index];
-            if (frame.getClassName().contains(".canvasmode.canvas.ContainerActivity$")
-                    && "c".equals(frame.getMethodName())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     // ============================================================
     // P1: Block 700 SplitBar three-split drag
     // ============================================================
@@ -2176,58 +1786,6 @@ public final class PsCanvasHooks {
      * which were replaced by unified spring drag (E.u0) in 700.
      * Block both u0() and its spring init R().
      */
-    private static void hookBlockSplitBarThreeSplitDrag(XC_LoadPackage.LoadPackageParam lpparam) {
-        String E_CLASS = "com.oplus.pscanvas.canvasmode.canvas.E";
-
-        // 260608 renamed the five-argument three-split spring handler from u0 to v0.
-        try {
-            Class<?> eClass = findClassFirst(lpparam.classLoader, E_CLASS);
-            if (eClass == null) {
-                PsCanvasLog.w("P1: E.u0 hook skipped, E class not found");
-                return;
-            }
-            Class<?> eInnerC = null;
-            for (Class<?> inner : eClass.getDeclaredClasses()) {
-                if (inner.getSimpleName().equals("c")) {
-                    eInnerC = inner;
-                    break;
-                }
-            }
-            if (eInnerC != null) {
-                XposedHelpers.findAndHookMethod(eClass, "v0",
-                        eInnerC, Float.TYPE, Float.TYPE, Float.TYPE, Float.TYPE,
-                        new XC_MethodHook() {
-                            @Override
-                            protected void beforeHookedMethod(MethodHookParam param) {
-                                SplitBar502Compat.blockEU0(param);
-                            }
-                        });
-                PsCanvasLog.i("260608 P1: hookBlockSplitBarThreeSplitDrag v0 installed on E");
-            } else {
-                PsCanvasLog.w("260608 P1: E.v0 hook skipped, E.c inner class not found");
-            }
-        } catch (Throwable t) {
-            PsCanvasLog.e("260608 P1: hookBlockSplitBarThreeSplitDrag v0 failed", t);
-        }
-
-        // Block E.R() — spring animation initialization
-        try {
-            Class<?> eClass = findClassFirst(lpparam.classLoader, E_CLASS);
-            if (eClass != null) {
-                XposedHelpers.findAndHookMethod(eClass, "R",
-                        new XC_MethodHook() {
-                            @Override
-                            protected void beforeHookedMethod(MethodHookParam param) {
-                                SplitBar502Compat.blockER(param);
-                            }
-                        });
-                PsCanvasLog.i("P1: hookBlockSplitBarThreeSplitDrag R installed on E");
-            }
-        } catch (Throwable t) {
-            PsCanvasLog.e("P1: hookBlockSplitBarThreeSplitDrag R failed", t);
-        }
-    }
-
     // ============================================================
     // P2: Z-Order + getLaunchRect panorama fix
     // ============================================================
@@ -2241,15 +1799,15 @@ public final class PsCanvasHooks {
      * The live dex may use different parameter types than the decompiled
      * APK — try multiple signatures to find the right one.
      */
-    private static void hookBlockThreeSplitZOrder(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookBlockThreeSplitZOrder(PackageLoadContext lpparam) {
         boolean hooked = false;
         // Try exact signature from decompiled APK: z(int, View)
         try {
-            XposedHelpers.findAndHookMethod(CONFIG, lpparam.classLoader, "z",
+            hookRuntime.findAndHookMethod(CONFIG, lpparam.classLoader, "z",
                     Integer.TYPE, android.view.View.class,
-                    new XC_MethodReplacement() {
+                    new HookReplacement() {
                         @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
+                        protected Object replaceHookedMethod(HookCall param) {
                             return false;
                         }
                     });
@@ -2262,11 +1820,11 @@ public final class PsCanvasHooks {
         // Try: z(int, Object) — live dex may erase generics
         if (!hooked) {
             try {
-                XposedHelpers.findAndHookMethod(CONFIG, lpparam.classLoader, "z",
+                hookRuntime.findAndHookMethod(CONFIG, lpparam.classLoader, "z",
                         Integer.TYPE, Object.class,
-                        new XC_MethodReplacement() {
+                        new HookReplacement() {
                             @Override
-                            protected Object replaceHookedMethod(MethodHookParam param) {
+                            protected Object replaceHookedMethod(HookCall param) {
                                 return false;
                             }
                         });
@@ -2287,15 +1845,15 @@ public final class PsCanvasHooks {
      * 700 adds: if (B1.s.H() && item.B()) return item.i() (match-parent rect).
      * 502 never does this — always return normal rect item.n() in panorama.
      */
-    private static void hookFixPanoramaLaunchRect(XC_LoadPackage.LoadPackageParam lpparam) {
+    private static void hookFixPanoramaLaunchRect(PackageLoadContext lpparam) {
         try {
             String EMBEDDED_DECOR =
                     "com.oplus.pscanvas.canvasmode.canvas.view.EmbeddedViewDecor";
-            XposedHelpers.findAndHookMethod(EMBEDDED_DECOR, lpparam.classLoader,
+            hookRuntime.findAndHookMethod(EMBEDDED_DECOR, lpparam.classLoader,
                     "getLaunchRect",
-                    new XC_MethodHook() {
+                    new HookCallback() {
                         @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
+                        protected void beforeHookedMethod(HookCall param) {
                             SplitBar502Compat.blockPanoramaLaunchRectOverride(param);
                         }
                     });
