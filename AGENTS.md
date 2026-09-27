@@ -21,7 +21,7 @@ Only the progress section of document `00` determines the current gate and compl
 
 - The formal project and display name is **PsCanvas Classic**, and the target component is `com.oplus.pscanvas`.
 - Preserve `applicationId` `com.color.pscanvasfix` and the existing signing continuity so installed builds, LSPosed enablement, scope, and configuration remain upgrade-compatible.
-- The source is publicly visible under the custom **PsCanvas Classic Source-Available License**. Without prior explicit written authorization, it permits only inspection through the official public repository and a public, unmodified GitHub-native fork retained inside GitHub's fork network, including verbatim upstream sync. Modification, compilation, execution, external redistribution, integration, commercialization, and derivative works remain prohibited. Keep `LICENSE` and all user-facing notices consistent.
+- The source uses the custom **PsCanvas Classic Standalone Source License**. It permits viewing, downloading, cloning, forking, modifying, compiling, installing, running, testing, and compliant distribution as a standalone PsCanvas Classic project or application. Without prior explicit written authorization, Covered Materials may not be copied, ported, merged, embedded, bundled, or otherwise incorporated into another application, module, framework, toolkit, service, or multi-function project. Keep `LICENSE` and user-facing notices consistent with this standalone-use boundary.
 - The target architecture is the official modern libxposed API. Existing legacy entry points, APIs, and transitional names may remain until their planned migration; do not use them as a reason for an unplanned global rewrite.
 - Compatibility must be capability-driven and structure-driven. SHA-256, versionDate, versionName, versionCode, and internal generation labels are diagnostic, logging, testing, and research data only. They must not gate capability installation.
 - The 251215 (original 502) build is a static oracle for classic behavior only. Do not require installing or running it on a newer system. Mark visual details that cannot be established statically as `UNVERIFIED`.
@@ -126,7 +126,7 @@ After editing:
 - Use the LSPosed manager only as a reference for Material 3 buttons, setting rows, status cards, and light/dark design language. Do not copy its brand, assets, or full information architecture.
 - Use `../change/logo.png` as the design source for later launcher, adaptive, and monochrome icon assets.
 - Do not bundle unrelated AGP, Gradle, DSL, or JDK upgrades into migration work. Every dependency or toolchain change must serve the current gate and be explained separately.
-- The identity decision is fixed for the current modernization: display name `PsCanvas Classic`, application ID `com.color.pscanvasfix`, existing signing continuity, and the custom source-available/all-rights-reserved license in `LICENSE`. Never commit keystores, private keys, or passwords.
+- The identity decision is fixed for the current modernization: display name `PsCanvas Classic`, application ID `com.color.pscanvasfix`, existing signing continuity, and the custom standalone-source license in `LICENSE`. Never commit keystores, private keys, or passwords.
 - Keep README user-facing and concise. Public README and release notes use only formal release versions, not internal generation labels or extensive reverse-engineering detail.
 - Show README and release content to the user for confirmation before publishing.
 

@@ -32,8 +32,6 @@
 
 ## 安装
 
-以下步骤仅适用于已经取得本项目明确书面授权的用户：
-
 1. 从 [Releases](https://github.com/duoxini/pscanvasfix/releases) 下载 APK；
 2. 安装或覆盖安装 `PsCanvas Classic`；
 3. 在 LSPosed 中启用模块，作用域选择 `com.oplus.pscanvas`；
@@ -47,6 +45,6 @@
 
 ## 许可证
 
-本项目公开源码仅允许在线查看，以及在 GitHub Fork 网络内创建并同步公开、未修改的原生 Fork。未经事先明确书面授权，不授予修改、编译、安装、运行、测试、发布、再分发、集成或创作衍生作品的权利。
+本项目允许查看、下载、Fork、修改、编译、安装、运行和测试；满足保留许可与声明、公开对应源码等条件时，也允许以独立的 PsCanvas Classic 项目或应用形式分发原版或修改版。
 
-完整条款见 [PsCanvas Classic Source-Available License](LICENSE)。该许可同时覆盖版权所有者拥有权利的源码、项目资源及官方 Release 文件；第三方组件继续适用各自的许可，详见 [Third-Party Notices](THIRD_PARTY_NOTICES.md)。针对特定文件的额外授权仅以版权所有者的明确书面文字为准。
+未经事先明确书面授权，不得把本项目代码或素材复制、移植、合并、嵌入或捆绑到其他应用、模块、框架、工具箱、服务或多功能项目中。完整条款见 [PsCanvas Classic Standalone Source License](LICENSE)；第三方组件继续适用各自的许可，详见 [Third-Party Notices](THIRD_PARTY_NOTICES.md)。

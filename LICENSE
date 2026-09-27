@@ -1,184 +1,256 @@
-PsCanvas Classic Source-Available License
-Version 1.1, 2026-09-27
+PsCanvas Classic Standalone Source License
+Version 1.0, 2026-09-27
 
-Copyright (c) 2026 duoxini. All rights reserved.
+Copyright (c) 2026 duoxini.
 
-1. Scope and definitions
+1. Definitions
 
 "Official Repository" means:
 https://github.com/duoxini/pscanvasfix
 
-"Official Releases" means the release pages and files published by the
-copyright holder from the Official Repository.
+"Official Release files" means release assets published by the copyright
+holder from the Official Repository.
 
 "Covered Materials" means every portion of the source code, documentation,
 images, project assets, and Official Release files for which the copyright
-holder owns or controls the relevant rights. A Covered Material remains
-covered when it is included in an archive, APK, or other combined file.
+holder owns or controls the relevant rights. Third-party materials are not
+Covered Materials and remain governed by their own terms.
 
-Third-party software and materials are not Covered Materials. They remain
-subject to their own copyright notices and license terms. The principal
-third-party notices are listed in THIRD_PARTY_NOTICES.md and, for distributed
-APKs, in the packaged license notices.
+"Standalone Work" means the PsCanvas Classic project or a fork or modified
+version whose product purpose is to provide PsCanvas Classic functionality
+under its own project identity, artifact or package, installation entry, and
+license notices. It must not form a feature, component, library, plugin,
+feature pack, or bundled part of another product.
 
-2. Public availability is not an open-source license
+"Integrated Product" means any other application, module, plugin, framework,
+toolkit, library, service, firmware, project, or product into which any Covered
+Materials or a substantial portion of them are copied, ported, adapted, merged,
+embedded, linked, bundled, or otherwise incorporated in source or object form.
 
-The Covered Materials are publicly visible for online viewing and inspection.
-Public availability does not make them open-source or free software and does
-not grant any implied license.
+"Corresponding Source" means the source code, project assets, build scripts,
+and configuration used to produce a distributed object form, including changes
+to those items. It excludes signing secrets; unmodified general-purpose
+dependencies available from a public source; standard JDK, SDK, NDK, Gradle,
+AGP, and Kotlin toolchains; and operating-system or framework components.
 
-3. Limited permission without prior written authorization
+2. Permission grant
 
-Without limiting rights independently and directly granted under GitHub's
-Terms of Service or applicable law, the copyright holder permits only the
-following acts without prior explicit written authorization:
+Subject to this License, the copyright holder grants you a perpetual,
+worldwide, non-exclusive, royalty-free license to:
 
-a. viewing and inspecting the Covered Materials through the Official
-   Repository; and
-b. using GitHub's native Fork and sync functions, through the GitHub service,
-   to create and retain a public, unmodified fork inside the Official
-   Repository's GitHub fork network and to sync exact, unmodified upstream
-   content into that fork.
+a. view, inspect, download, copy, and clone the Covered Materials;
+b. create and maintain a public or private fork;
+c. modify, adapt, compile, build, install, execute, and test the Covered
+   Materials; and
+d. distribute the Covered Materials, in original or modified source or object
+   form, only as a Standalone Work.
 
-These permissions include only the copies technically necessary for those
-acts. They do not permit modifying the fork, adding files or commits, making
-any clone or download outside the permitted GitHub-native Fork and sync
-operations, compiling, building, installing,
-executing, testing, publishing a release or package, redistributing outside
-GitHub's fork network, integrating into another project, product, or service,
-commercializing, sublicensing, or creating a derivative work.
+A Standalone Work may be used and distributed for commercial or non-commercial
+purposes. Distribution is permitted only if you:
 
-4. All other rights reserved
+a. include this License, all copyright notices, and applicable third-party
+   notices;
+b. if modified, identify the modified files and clearly state that the work is
+   an unofficial modified version;
+c. make the complete Corresponding Source publicly available at no charge for
+   as long as the object form is available, licensing its Covered Materials
+   under this same License while third-party portions remain under their
+   applicable licenses;
+d. impose no additional terms that restrict rights granted by this License;
+   and
+e. do not state or imply endorsement by the copyright holder.
 
-Except for Section 3, a separate prior explicit written authorization from the
-copyright holder, or a right that cannot lawfully be restricted, no person or
-organization may use, reproduce, copy, modify, adapt, translate, compile,
-build, install, execute, test, distribute, publish, sublicense, sell,
-commercialize, provide as a service, incorporate into another work, or create
-derivative works from the Covered Materials.
+Each recipient receives this License directly from the copyright holder. A
+distributor does not sublicense the Covered Materials.
 
-An authorization must identify the authorized person or organization and the
-permitted purpose, scope, and term. Repository access, silence, a download, an
-Issue, a Pull Request, or a contribution is not authorization. A permitted
-GitHub-native fork grants no rights beyond Section 3.
+3. Integration restriction
 
-Nothing in this License limits rights granted independently and directly under
-GitHub's Terms of Service or applicable law. Such rights do not create any
-off-platform permission under this License.
+Without prior explicit written authorization from the copyright holder, you
+may not use any Covered Materials or a substantial portion of them in an
+Integrated Product. This includes copying or adapting PsCanvas Classic code or
+assets into a multi-function system module, utility suite, application,
+framework, toolkit, service, or another project, whether the Integrated Product
+is public or private, open or closed source, free or paid, or commercial or
+non-commercial.
 
-5. Project name and marks
+This restriction applies even if the Integrated Product keeps attribution,
+publishes its source, or uses this same License. Authorization must identify
+the authorized person or organization and the permitted product, purpose,
+scope, and term.
 
-This License grants no trademark or branding license. The project name, logo,
-and other identifiers may remain only as an unchanged, inseparable part of a
-fork permitted by Section 3, or may be used for truthful identification where
-applicable law permits. Any other branding, promotional, or source-identifying
-use requires prior explicit written authorization.
+Using a separate process, APK, dynamic feature, plugin, companion package, or
+repository does not by itself make a work standalone. It remains an Integrated
+Product if another product presents, brands, manages, installs, updates, or
+offers it as one of that product's features.
 
-6. Termination
+4. What is not integration
+
+The following do not, by themselves, create an Integrated Product:
+
+a. compiling with build tools or using independently licensed,
+   general-purpose third-party dependencies that contain no Covered Materials;
+b. having a Standalone Work installed, loaded, hooked, configured, or executed
+   by LSPosed, libxposed, Android, ColorOS, PsCanvas, a package manager, or
+   another operating-system component;
+c. communicating with other software solely through operating-system, public,
+   or documented interfaces without incorporating Covered Materials into that
+   software; or
+d. distributing a compliant, separately installed, independently executable
+   Standalone Work on the same store, repository, archive, or medium as other
+   software.
+
+These exceptions do not permit copying Covered Materials into a dependency,
+platform, host, manager, or other software.
+
+5. Independently created implementations
+
+This License governs the Covered Materials, not ideas, facts, functions,
+features, interfaces, protocols, compatibility, or methods of operation that
+copyright law does not protect. It does not restrict code or assets created
+independently without copying, translating, adapting, or incorporating
+protectable expression from the Covered Materials.
+
+6. Project name and marks
+
+This License grants no general trademark or branding license. A compliant
+Standalone Work may retain the project name and logo to identify its origin. A
+modified version must clearly identify itself as an unofficial fork and must
+not imply endorsement. Other promotional or source-identifying use requires
+prior explicit written authorization.
+
+7. Termination
 
 The permissions in this License terminate automatically upon breach. Ending
 the breach does not automatically restore them. The copyright holder may
 restore permission in writing.
 
-7. Non-waivable rights
+8. Third-party materials
 
-Nothing in this License restricts a right that applicable law does not permit
-the copyright holder to waive or restrict. Any such right applies only to the
-extent required by that law.
+Third-party notices are listed in THIRD_PARTY_NOTICES.md and, for distributed
+APKs, in the packaged license notices. Nothing in this License limits rights
+granted by a third party under its own license.
 
-8. Disclaimer and limitation of liability
+9. Disclaimer and limitation of liability
 
 THE COVERED MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF TITLE, MERCHANTABILITY, FITNESS
 FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT
 PERMITTED BY LAW, THE COPYRIGHT HOLDER SHALL NOT BE LIABLE FOR ANY CLAIM,
-DAMAGE, OR OTHER LIABILITY ARISING FROM ACCESS TO, USE OF, OR RELIANCE ON THE
-COVERED MATERIALS, WHETHER OR NOT SUCH ACCESS OR USE WAS AUTHORIZED.
+DAMAGE, OR OTHER LIABILITY ARISING FROM THE COVERED MATERIALS OR THIS LICENSE.
 
-9. Contact and language
+10. Contact, law, and language
 
-Requests for authorization must be made through the Official Repository's
-published contact channel. If the English and Chinese texts differ, the
-English text controls.
+Requests for integration authorization must be made through the Official
+Repository's published contact channel. Nothing in this License restricts a
+right that applicable law does not permit the copyright holder to restrict. If
+the English and Chinese texts differ, the English text controls.
 
 ---
 
-PsCanvas Classic 源码公开许可
-版本 1.1，2026-09-27
+PsCanvas Classic 独立使用源码许可
+版本 1.0，2026-09-27
 
-版权所有 (c) 2026 duoxini。保留所有权利。
+版权所有 (c) 2026 duoxini。
 
-1. 适用范围与定义
+1. 定义
 
 “官方仓库”是指：
 https://github.com/duoxini/pscanvasfix
 
-“官方发布”是指版权所有者通过官方仓库发布的 Release 页面及文件。
+“官方发布文件”是指版权所有者通过官方仓库发布的 Release 资产。
 
-“许可材料”是指源代码、文档、图片、项目资源和官方发布文件中，版权所有者拥有或
-控制相关权利的全部内容。许可材料被包含在压缩包、APK 或其他组合文件中时，仍受本
-许可约束。
+“许可材料”是指源代码、文档、图片、项目资源和官方 Release 文件中，版权所有者拥有
+或控制相关权利的全部内容。第三方材料不属于许可材料，继续适用其各自的条款。
 
-第三方软件与材料不属于许可材料，继续适用其各自的版权声明与许可条款。主要第三方
-声明见 THIRD_PARTY_NOTICES.md；随 APK 分发的声明见 APK 内置许可文件。
+“独立作品”是指 PsCanvas Classic 项目，或仅以自身独立的项目身份、制品或安装包、
+安装入口及许可声明提供 PsCanvas Classic 功能的 Fork 或修改版本。独立作品不得成为
+其他产品的一项功能、组件、库、插件、功能包或捆绑部分。
 
-2. 公开可见不等于开放源代码许可
+“集成产品”是指任何其他应用、模块、插件、框架、工具箱、库、服务、固件、项目或产品，
+其中以源代码或目标代码形式复制、移植、改编、合并、嵌入、链接、捆绑或以其他方式纳入
+了任何许可材料或其中实质性部分。
 
-许可材料仅为在线查看和审阅而公开可见。公开可见不代表采用开放源代码许可或自由
-软件许可，也不产生任何默示授权。
+“对应源码”是指用于生成所分发目标代码的源代码、项目资源、构建脚本与配置，包括对
+这些内容的修改；不包括签名秘密、可从公开来源获得且未经修改的通用依赖、标准 JDK、
+SDK、NDK、Gradle、AGP、Kotlin 工具链，以及操作系统或框架组件。
 
-3. 未经事先书面授权时的有限许可
+2. 授权
 
-本许可不限制 GitHub 服务条款或适用法律独立、直接授予的权利。除此之外，未经事先
-明确书面授权，版权所有者仅允许以下行为：
+在遵守本许可的前提下，版权所有者授予你永久、全球范围、非独占、免许可费的许可，允许你：
 
-a. 通过官方仓库查看、审阅许可材料；
-b. 仅通过 GitHub 服务的原生 Fork 与同步功能，在官方仓库的 GitHub Fork 网络内
-   创建并保留公开、未修改的 Fork，以及向其中同步与上游完全一致、未经修改的内容。
+a. 查看、审阅、下载、复制和克隆许可材料；
+b. 创建并维护公开或私有 Fork；
+c. 修改、改编、编译、构建、安装、运行和测试许可材料；
+d. 仅以独立作品形式分发许可材料的原始或修改后的源代码或目标代码。
 
-上述许可仅包括完成这些行为所必需的技术复制，不允许修改 Fork、增加文件或提交、
-在获准的 GitHub 原生 Fork 与同步操作之外进行任何克隆或下载、编译、构建、安装、
-运行、测试、发布 Release 或 Package、
-在 GitHub Fork 网络外再分发、集成到其他项目、产品或服务、商业利用、再许可，或
-创作衍生作品。
+独立作品可用于商业或非商业目的。分发时必须同时满足以下条件：
 
-4. 保留其他全部权利
+a. 包含本许可、全部版权声明以及适用的第三方声明；
+b. 如有修改，标明修改过的文件，并清楚声明该作品为非官方修改版本；
+c. 在目标代码可获取期间持续免费公开提供完整对应源码，其中许可材料采用本许可，第三方
+   内容继续适用其各自的许可；
+d. 不附加限制本许可所授予权利的其他条款；
+e. 不声明或暗示得到版权所有者认可或背书。
 
-除第 3 条、版权所有者事先另行给予的明确书面授权，或法律规定不得限制的权利外，
-任何个人或组织均不得使用、复制、修改、改编、翻译、编译、构建、安装、运行、测试、
-分发、发布、再许可、销售、商业利用、作为服务提供、合并到其他作品，或基于许可材料
-创作衍生作品。
+每位接收者均直接从版权所有者处取得本许可；分发者不对许可材料进行再许可。
 
-授权必须明确被授权的个人或组织，以及允许的目的、范围和期限。能够访问仓库、版权
-所有者未回复、下载、提交 Issue、Pull Request 或贡献代码，均不构成授权。按第 3 条
-创建 GitHub 原生 Fork，不产生超出该条规定的任何权利。
+3. 集成限制
 
-本许可不限制 GitHub 服务条款或适用法律独立、直接授予的权利。此类权利不产生本
-许可项下任何平台外使用权。
+未经版权所有者事先明确书面授权，不得在集成产品中使用任何许可材料或其中实质性部分。
+这包括将 PsCanvas Classic 的代码或素材复制或改编到多功能系统模块、工具合集、应用、
+框架、工具箱、服务或其他项目中，无论该集成产品为公开或私有、开源或闭源、免费或
+付费、商业或非商业。
 
-5. 项目名称与标识
+即使集成产品保留署名、公开源码或采用本许可，上述限制仍然适用。授权必须明确被授权
+的个人或组织，以及允许的产品、目的、范围和期限。
 
-本许可不授予商标或品牌使用权。项目名称、Logo 与其他标识仅可作为第 3 条所允许的
-未修改 Fork 中不可分割且保持原样的部分而保留，或在适用法律允许时用于如实指明项目。
-其他品牌、宣传或来源标识用途均须事先取得明确书面授权。
+采用独立进程、APK、动态功能、插件、伴生安装包或独立仓库，本身不代表构成独立作品。
+如果另一产品把它作为自身的一项功能进行展示、品牌化、管理、安装、更新或提供，它仍
+属于集成产品。
 
-6. 终止
+4. 不属于集成的情形
 
-一旦违反本许可，本许可授予的权限自动终止。停止违约行为不会自动恢复权限；版权所有
-者可以书面恢复相关权限。
+以下行为本身不构成集成产品：
 
-7. 不可排除的法定权利
+a. 使用构建工具进行编译，或使用不包含许可材料、采用独立许可证的通用第三方依赖；
+b. 由 LSPosed、libxposed、Android、ColorOS、PsCanvas、包管理器或其他操作系统组件
+   安装、加载、Hook、配置或运行独立作品；
+c. 在不把许可材料纳入其他软件的前提下，仅通过操作系统、公开或有文档的接口与其他
+   软件通信；
+d. 在同一应用商店、仓库、压缩包或介质中并列分发合规、单独安装且可独立运行的独立
+   作品。
 
-本许可不限制适用法律不允许版权所有者放弃或限制的权利。此类权利仅在该法律要求的
-范围内适用。
+上述例外不允许把许可材料复制到依赖、平台、宿主、管理器或其他软件中。
 
-8. 免责声明与责任限制
+5. 独立创作的实现
 
-许可材料按“现状”提供，不附带任何明示或默示保证，包括所有权、适销性、特定用途
-适用性和不侵权保证。在法律允许的最大范围内，无论访问或使用是否得到授权，版权所有
-者均不对因访问、使用或依赖许可材料产生的任何索赔、损害或其他责任负责。
+本许可约束许可材料，不约束版权法不予保护的思想、事实、功能、特性、接口、协议、兼容性
+或操作方法。本许可不限制在未复制、翻译、改编或纳入许可材料中受保护表达的情况下独立
+创作的代码或素材。
 
-9. 联系方式与语言
+6. 项目名称与标识
 
-授权申请须通过官方仓库公布的联系渠道提出。英文文本与中文文本不一致时，以英文文本
-为准。
+本许可不授予一般性的商标或品牌使用权。合规的独立作品可以保留项目名称与 Logo 以
+说明其来源。修改版本必须清楚标明为非官方 Fork，且不得暗示得到版权所有者认可。其他
+宣传或来源标识用途须事先取得明确书面授权。
+
+7. 终止
+
+一旦违反本许可，本许可授予的权限自动终止。停止违约行为不会自动恢复权限；版权所有者
+可以书面恢复相关权限。
+
+8. 第三方材料
+
+第三方声明见 THIRD_PARTY_NOTICES.md；随 APK 分发的声明见 APK 内置许可文件。本许可
+不限制第三方依据其自身许可证授予的权利。
+
+9. 免责声明与责任限制
+
+许可材料按“现状”提供，不附带任何明示或默示保证，包括所有权、适销性、特定用途适用性
+和不侵权保证。在法律允许的最大范围内，版权所有者不对因许可材料或本许可产生的任何
+索赔、损害或其他责任负责。
+
+10. 联系方式、法律与语言
+
+集成授权申请须通过官方仓库公布的联系渠道提出。本许可不限制适用法律不允许版权所有者
+限制的权利。英文文本与中文文本不一致时，以英文文本为准。
