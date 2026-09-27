@@ -1,0 +1,73 @@
+name: 兼容性或功能问题
+description: 报告 PsCanvas Classic 在目标设备上的兼容性或功能异常
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先确认模块已启用、作用域为 `com.oplus.pscanvas`，并在问题发生后复制模块管理页的基础信息。
+  - type: input
+    id: device
+    attributes:
+      label: 设备型号
+      placeholder: 例如 OPD2413
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: ColorOS 与 Android 版本
+      placeholder: 例如 ColorOS 16 / Android 16
+    validations:
+      required: true
+  - type: input
+    id: lsposed
+    attributes:
+      label: LSPosed 版本
+    validations:
+      required: true
+  - type: input
+    id: module
+    attributes:
+      label: PsCanvas Classic 版本
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 模块基础信息
+      description: 粘贴管理页“复制基础信息”的内容；其中包含目标组件版本与能力状态。
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述
+      description: 说明预期结果与实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 执行……
+        3. 出现……
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与截图
+      description: 可拖入文件，或粘贴相关 LSPosed / 模块日志。请先移除个人信息。
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已确认问题可以稳定复现，并附上可用的环境信息。
+          required: true
