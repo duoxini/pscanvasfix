@@ -369,6 +369,17 @@ public final class SplitPolicyCompat {
             return 0;
         }
         try {
+            Object taskView = reflectionAccess.callMethod(decor, "getFlexibleTaskView");
+            if (taskView != null) {
+                Object taskId = reflectionAccess.callMethod(taskView, "getTaskId");
+                if (taskId instanceof Integer && (Integer) taskId > 0) {
+                    return (Integer) taskId;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // The legacy TaskData accessor is still available before a task view attaches.
+        }
+        try {
             Object taskData = reflectionAccess.callMethod(decor, "getTaskData");
             if (taskData == null) {
                 return 0;

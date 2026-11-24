@@ -9,15 +9,12 @@ import com.color.pscanvasfix.hook.PsCanvasSymbols.Status;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 /** Resolves the save/update/restore contract for pinned split-layout shortcuts. */
 final class SavedSplitLayoutSymbolResolver {
     private static final String CONTAINER_ACTIVITY =
             "com.oplus.pscanvas.canvasmode.canvas.ContainerActivity";
-    private static final List<String> RESTORE_METHOD_HINTS =
-            Collections.unmodifiableList(Arrays.asList("K1", "T1", "W1"));
 
     private SavedSplitLayoutSymbolResolver() {
     }
@@ -100,7 +97,7 @@ final class SavedSplitLayoutSymbolResolver {
     private static DexMethod uniqueHintedRestore(DexClass containerActivity) {
         DexMethod match = null;
         for (DexMethod method : containerActivity.methods) {
-            if (!RESTORE_METHOD_HINTS.contains(method.name)
+            if (!KnownSymbolHints.savedLayoutRestoreMethods().contains(method.name)
                     || !MethodMatcher.isBundleBoolean(method)) {
                 continue;
             }

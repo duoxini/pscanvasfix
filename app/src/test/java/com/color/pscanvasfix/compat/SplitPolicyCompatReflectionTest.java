@@ -15,11 +15,11 @@ import static org.junit.Assert.assertTrue;
 /** Source-contract regression for SplitPolicyCompat's legacy reflection adapter. */
 public final class SplitPolicyCompatReflectionTest {
     @Test
-    public void eighteenCallsUseReflectionAccessWithOriginalArgumentShapes() throws IOException {
+    public void callsUseReflectionAccessWithOriginalArgumentShapes() throws IOException {
         String source = source();
 
         assertFalse(source.contains("XposedHelpers"));
-        assertEquals(18, occurrences(source, "reflectionAccess.callMethod("));
+        assertEquals(20, occurrences(source, "reflectionAccess.callMethod("));
         assertEquals(10, occurrences(source, "new Object[0]"));
         assertEquals(1, occurrences(source, "new Object[]{false}"));
         assertTrue(source.contains(
@@ -40,6 +40,8 @@ public final class SplitPolicyCompatReflectionTest {
                 "reflectionAccess.callMethod(\n                        containerView, \"getChildEmbeddedViewList\")",
                 "reflectionAccess.callMethod(splitPolicy, \"G\", index)",
                 "reflectionAccess.callMethod(splitPolicy, \"E\", decor)",
+                "reflectionAccess.callMethod(decor, \"getFlexibleTaskView\")",
+                "reflectionAccess.callMethod(taskView, \"getTaskId\")",
                 "reflectionAccess.callMethod(decor, \"getTaskData\")",
                 "reflectionAccess.callMethod(taskData, \"s\")",
                 "reflectionAccess.callMethod(containerView, \"getChildEmbeddedViewList\", new Object[0])",

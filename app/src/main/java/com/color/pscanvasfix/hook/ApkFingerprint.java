@@ -36,7 +36,7 @@ public final class ApkFingerprint {
     /** Known target-APK generations by SHA-256. New builds are appended here. */
     private static final Map<String, String> KNOWN_GENERATION_BY_SHA = createGenerationTable();
     private static final List<String> VERIFIED_VERSION_DATES =
-            List.of("251215", "260403", "260512", "260608");
+            List.of("251215", "260403", "260512", "260608", "260826");
 
     private static Map<String, String> createGenerationTable() {
         Map<String, String> table = new HashMap<>();
@@ -50,6 +50,8 @@ public final class ApkFingerprint {
                 "260512 (target)");
         table.put("1cbf75ee66565ba4eb2e78c360243bc97d7e13379595f94914af5b25c7a77fe3",
                 "260608 (target)");
+        table.put("7d182e88b918aa14191899f3330a7aaf977e9049bd6a641239f31fc442a7a369",
+                "260826 (target)");
         return Collections.unmodifiableMap(table);
     }
 
@@ -68,7 +70,7 @@ public final class ApkFingerprint {
         return "unknown".equals(generation) ? null : generation.substring(0, 6);
     }
 
-    /** Builds covered by the checked-in offline compatibility regression. */
+    /** Builds covered by the offline compatibility regression. */
     public static List<String> verifiedVersionDates() {
         return VERIFIED_VERSION_DATES;
     }

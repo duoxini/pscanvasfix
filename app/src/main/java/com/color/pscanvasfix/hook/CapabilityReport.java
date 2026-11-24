@@ -45,6 +45,8 @@ public final class CapabilityReport {
                 symbols.role(Role.THREE_SPLIT_DRAG).available());
         appendCapability(sb, "canvasController",
                 symbols.role(Role.CANVAS_CONTROLLER).available());
+        appendCapability(sb, "classicLayout",
+                symbols.role(Role.CLASSIC_LAYOUT).available());
         appendCapability(sb, "twoTaskPanorama",
                 symbols.role(Role.PANORAMA_MANAGER).available());
         appendCapability(sb, "savedSplitLayout",
@@ -91,6 +93,10 @@ public final class CapabilityReport {
         if (symbol.twoTaskPredicateMethod != null) {
             sb.append("      twoTaskPredicate=")
                     .append(symbol.twoTaskPredicateMethod).append('\n');
+        }
+        if (symbol.layoutMethods != null) {
+            appendValue(sb, "classicLayout.equalWidth", symbol.layoutMethods.equalWidth());
+            appendValue(sb, "classicLayout.conversion", symbol.layoutMethods.conversionMark());
         }
         appendValue(sb, "savedLayout.build", symbol.savedLayoutBuildMethod);
         appendValue(sb, "savedLayout.save", symbol.savedLayoutSaveMethod);

@@ -44,21 +44,22 @@ public final class PsCanvasHookRegistryContractTest {
             "splitbar.three_split_scroll_start.block",
             "splitbar.three_split_enlarge.block",
             "splitbar.spring_drag_handler.block",
-            "splitbar.spring_animation_init.block"
+            "splitbar.spring_animation_init.block",
+            "splitbar.short_divider.focus"
     };
 
     @Test
-    public void declaresThirtyUniqueStableIdsInExactGlobalFacadeOrder() throws IOException {
+    public void declaresUniqueStableIdsInExactGlobalFacadeOrder() throws IOException {
         String facade = facade();
         String features = featureSources();
         String aggregate = facade + features;
 
-        assertEquals(30, STABLE_IDS.length);
+        assertEquals(31, STABLE_IDS.length);
         for (String stableId : STABLE_IDS) {
             assertEquals("Stable ID must have one production owner: " + stableId,
                     1, occurrences(aggregate, "\"" + stableId + "\""));
         }
-        assertEquals(30, occurrences(features, "hookRegistry.declare("));
+        assertEquals(31, occurrences(features, "hookRegistry.declare("));
 
         String install = installMethod(facade);
         assertInOrder(install,
@@ -111,7 +112,8 @@ public final class PsCanvasHookRegistryContractTest {
                 "hookRegistry.declare(HOOK_THREE_SPLIT_SCROLL_START_BLOCK,",
                 "hookRegistry.declare(HOOK_THREE_SPLIT_ENLARGE_BLOCK,",
                 "hookRegistry.declare(HOOK_SPRING_DRAG_HANDLER_BLOCK,",
-                "hookRegistry.declare(HOOK_SPRING_ANIMATION_INIT_BLOCK,");
+                "hookRegistry.declare(HOOK_SPRING_ANIMATION_INIT_BLOCK,",
+                "hookRegistry.declare(HOOK_SHORT_DIVIDER_FOCUS,");
 
         assertTrue(facade.contains("private static volatile HookRegistry activeHookRegistry = "
                 + "new HookRegistry();"));
@@ -395,11 +397,11 @@ public final class PsCanvasHookRegistryContractTest {
                 "private static void installSpringSuppressionHooks(");
         assertInOrder(container,
                 "HOOK_RESIZABLE_RECT_UPDATE_BLOCK,",
-                "SplitBar502Compat.blockF3(param, allowThreeTaskResize);",
+                "SplitBar502Compat.blockF3(param, allowThreeTaskResize, panoramaActiveMethod);",
                 "markHookInstalled(hookRegistry, HOOK_RESIZABLE_RECT_UPDATE_BLOCK,",
                 "markHookFailed(hookRegistry, HOOK_RESIZABLE_RECT_UPDATE_BLOCK,",
                 "HOOK_THREE_SPLIT_SCROLL_START_BLOCK,",
-                "SplitBar502Compat.blockE2Entry(param, allowThreeTaskResize);",
+                "SplitBar502Compat.blockE2Entry(param, allowThreeTaskResize, panoramaActiveMethod);",
                 "markHookInstalled(hookRegistry, HOOK_THREE_SPLIT_SCROLL_START_BLOCK,",
                 "markHookFailed(hookRegistry, HOOK_THREE_SPLIT_SCROLL_START_BLOCK,",
                 "if (springController == null)",
@@ -407,7 +409,7 @@ public final class PsCanvasHookRegistryContractTest {
                 "if (springState == null)",
                 "markHookSkipped(hookRegistry, HOOK_THREE_SPLIT_ENLARGE_BLOCK,",
                 "HOOK_THREE_SPLIT_ENLARGE_BLOCK,",
-                "SplitBar502Compat.blockI2(param, allowThreeTaskResize);",
+                "SplitBar502Compat.blockI2(param, allowThreeTaskResize, panoramaActiveMethod);",
                 "markHookInstalled(hookRegistry, HOOK_THREE_SPLIT_ENLARGE_BLOCK,",
                 "markHookFailed(hookRegistry, HOOK_THREE_SPLIT_ENLARGE_BLOCK,");
 
@@ -419,16 +421,27 @@ public final class PsCanvasHookRegistryContractTest {
                 "markHookSkipped(hookRegistry, HOOK_SPRING_DRAG_HANDLER_BLOCK,",
                 "markHookSkipped(hookRegistry, HOOK_SPRING_ANIMATION_INIT_BLOCK,",
                 "HOOK_SPRING_DRAG_HANDLER_BLOCK,",
-                "SplitBar502Compat.blockEU0(param, allowThreeTaskResize);",
+                "SplitBar502Compat.blockEU0(param, allowThreeTaskResize, panoramaActiveMethod);",
                 "markHookInstalled(hookRegistry, HOOK_SPRING_DRAG_HANDLER_BLOCK,",
                 "markHookSkipped(hookRegistry, HOOK_SPRING_DRAG_HANDLER_BLOCK,",
                 "markHookFailed(hookRegistry, HOOK_SPRING_DRAG_HANDLER_BLOCK,",
                 "HOOK_SPRING_ANIMATION_INIT_BLOCK,",
-                "SplitBar502Compat.blockER(param, allowThreeTaskResize);",
+                "SplitBar502Compat.blockER(param, allowThreeTaskResize, panoramaActiveMethod);",
                 "markHookInstalled(hookRegistry, HOOK_SPRING_ANIMATION_INIT_BLOCK,",
                 "markHookSkipped(hookRegistry, HOOK_SPRING_ANIMATION_INIT_BLOCK,",
                 "markHookFailed(hookRegistry, HOOK_SPRING_ANIMATION_INIT_BLOCK,");
-        assertEquals(5, occurrences(source, "protected void beforeHookedMethod"));
+        String shortDivider = section(source,
+                "private static void installThreeTaskDragPolicy(",
+                "private static void installContainerSuppressionHooks(");
+        assertInOrder(shortDivider,
+                "if (!allowThreeTaskResize || methods == null)",
+                "markHookSkipped(hookRegistry, HOOK_SHORT_DIVIDER_FOCUS,",
+                "hookRuntime.findAndHookMethod(HOOK_SHORT_DIVIDER_FOCUS,",
+                "ThreeTaskResizeFocusCompat.selectAdjacentFocus(",
+                "ThreeTaskResizeFocusCompat.alignMainDividerThreshold(",
+                "markHookInstalled(hookRegistry, HOOK_SHORT_DIVIDER_FOCUS,",
+                "markHookFailed(hookRegistry, HOOK_SHORT_DIVIDER_FOCUS,");
+        assertEquals(6, occurrences(source, "protected void beforeHookedMethod"));
         assertEquals(0, occurrences(source, "param.setResult("));
     }
 
@@ -479,7 +492,7 @@ public final class PsCanvasHookRegistryContractTest {
     @Test
     public void aggregateProductionSourcesKeepFrozenModernRuntimeCounts() throws IOException {
         String source = facade() + featureSources() + featureInstaller();
-        assertEquals(35, occurrences(source, "hookRuntime.findAndHookMethod("));
+        assertEquals(36, occurrences(source, "hookRuntime.findAndHookMethod("));
         assertEquals(1, occurrences(source, "hookRuntime.findAndHookConstructor("));
         assertEquals(16, occurrences(source, "hookRuntime.invokeOriginalMethod("));
         assertEquals(0, occurrences(source, "de.robv.android.xposed"));

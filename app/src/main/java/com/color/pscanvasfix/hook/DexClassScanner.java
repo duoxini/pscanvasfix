@@ -10,6 +10,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -130,7 +132,17 @@ public final class DexClassScanner {
         }
 
         void merge(DexClass other) {
-            methods.addAll(other.methods);
+            // A method defined in one DEX also appears in another DEX's method pool
+            // when it is called from there. Count the full descriptor only once.
+            Set<String> signatures = new HashSet<>();
+            for (DexMethod method : methods) {
+                signatures.add(method.name + method.signatureKey() + method.returnDescriptor);
+            }
+            for (DexMethod method : other.methods) {
+                if (signatures.add(method.name + method.signatureKey() + method.returnDescriptor)) {
+                    methods.add(method);
+                }
+            }
             fields.addAll(other.fields);
         }
     }

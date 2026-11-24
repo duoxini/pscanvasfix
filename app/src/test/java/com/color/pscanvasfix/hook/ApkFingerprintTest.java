@@ -33,7 +33,9 @@ public final class ApkFingerprintTest {
         assertEquals("260608", ApkFingerprint.versionDateOf(
                 "1cbf75ee66565ba4eb2e78c360243bc97d7e13379595f94914af5b25c7a77fe3"));
         assertNull(ApkFingerprint.versionDateOf("deadbeef"));
-        assertEquals(List.of("251215", "260403", "260512", "260608"),
+        assertEquals("260826", ApkFingerprint.versionDateOf(
+                "7d182e88b918aa14191899f3330a7aaf977e9049bd6a641239f31fc442a7a369"));
+        assertEquals(List.of("251215", "260403", "260512", "260608", "260826"),
                 ApkFingerprint.verifiedVersionDates());
     }
 }

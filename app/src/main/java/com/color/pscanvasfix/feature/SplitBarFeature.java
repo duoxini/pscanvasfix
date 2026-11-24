@@ -2,6 +2,8 @@ package com.color.pscanvasfix.feature;
 
 import com.color.pscanvasfix.compat.PsCanvasLog;
 import com.color.pscanvasfix.compat.SplitBar502Compat;
+import com.color.pscanvasfix.compat.ThreeTaskResizeFocusCompat;
+import com.color.pscanvasfix.hook.PsCanvasSymbols.ResizeFocusMethods;
 import com.color.pscanvasfix.runtime.HookCall;
 import com.color.pscanvasfix.runtime.HookCallback;
 import com.color.pscanvasfix.runtime.HookRegistry;
@@ -23,6 +25,8 @@ public final class SplitBarFeature {
             "splitbar.spring_drag_handler.block";
     public static final String HOOK_SPRING_ANIMATION_INIT_BLOCK =
             "splitbar.spring_animation_init.block";
+    public static final String HOOK_SHORT_DIVIDER_FOCUS =
+            "splitbar.short_divider.focus";
 
     private SplitBarFeature() {
     }
@@ -38,6 +42,8 @@ public final class SplitBarFeature {
                 "E.v0(E$c,float,float,float,float); before; block spring drag");
         hookRegistry.declare(HOOK_SPRING_ANIMATION_INIT_BLOCK,
                 "E.R(); before; block spring animation init");
+        hookRegistry.declare(HOOK_SHORT_DIVIDER_FOCUS,
+                "three-task drag policy; before/after; select target and align thresholds");
     }
 
     public static void install(PackageLoadContext lpparam, HookRuntime hookRuntime,
@@ -49,16 +55,59 @@ public final class SplitBarFeature {
                                String threeSplitEnlargeMethod,
                                String springDragHandlerMethod,
                                String springAnimationInitMethod,
-                               boolean allowThreeTaskResize) {
+                               boolean allowThreeTaskResize, String panoramaActiveMethod,
+                               ResizeFocusMethods focusMethods, boolean canAlignThreshold) {
         installContainerSuppressionHooks(lpparam, hookRuntime, hookRegistry,
                 reflectionAccess, containerViewClass, springControllerClass,
                 springStateInnerClass,
                 resizableRectUpdateMethod, threeSplitScrollStartMethod,
-                threeSplitEnlargeMethod, allowThreeTaskResize);
+                threeSplitEnlargeMethod, allowThreeTaskResize, panoramaActiveMethod);
         installSpringSuppressionHooks(lpparam, hookRuntime, hookRegistry,
                 reflectionAccess, springControllerClass, springStateInnerClass,
                 springDragHandlerMethod, springAnimationInitMethod,
-                allowThreeTaskResize);
+                allowThreeTaskResize, panoramaActiveMethod);
+        installThreeTaskDragPolicy(lpparam, hookRuntime, hookRegistry, reflectionAccess,
+                containerViewClass, springControllerClass, springStateInnerClass,
+                allowThreeTaskResize, panoramaActiveMethod, focusMethods, canAlignThreshold);
+    }
+
+    private static void installThreeTaskDragPolicy(
+            PackageLoadContext lpparam, HookRuntime hookRuntime, HookRegistry hookRegistry,
+            ReflectionAccess access, String containerViewClass, String springControllerClass,
+            String springStateInnerClass, boolean allowThreeTaskResize, String panoramaActiveMethod,
+            ResizeFocusMethods methods, boolean canAlignThreshold) {
+        if (!allowThreeTaskResize || methods == null) {
+            markHookSkipped(hookRegistry, HOOK_SHORT_DIVIDER_FOCUS,
+                    "adjustable sizing disabled or short divider policy unavailable");
+            return;
+        }
+        String policy = methods.policyClass() + "." + methods.calculateDragMode();
+        try {
+            hookRuntime.findAndHookMethod(HOOK_SHORT_DIVIDER_FOCUS,
+                    methods.policyClass(), lpparam.classLoader, methods.calculateDragMode(),
+                    containerViewClass, springControllerClass + "$" + springStateInnerClass,
+                    float.class, float.class, new HookCallback() {
+                        @Override
+                        protected void beforeHookedMethod(HookCall param) {
+                            ThreeTaskResizeFocusCompat.selectAdjacentFocus(param.args[0],
+                                    param.args[1], (Float) param.args[2], (Float) param.args[3],
+                                    panoramaActiveMethod, methods, access);
+                        }
+
+                        @Override
+                        protected void afterHookedMethod(HookCall param) {
+                            if (canAlignThreshold && Boolean.TRUE.equals(param.getResult())) {
+                                ThreeTaskResizeFocusCompat.alignMainDividerThreshold(param.args[0],
+                                        param.args[1], panoramaActiveMethod, methods, access);
+                            }
+                        }
+                    });
+            markHookInstalled(hookRegistry, HOOK_SHORT_DIVIDER_FOCUS,
+                    policy + "; align main divider threshold=" + canAlignThreshold);
+        } catch (Throwable t) {
+            markHookFailed(hookRegistry, HOOK_SHORT_DIVIDER_FOCUS, policy, t);
+            PsCanvasLog.e("three-task short divider policy hook failed", t);
+        }
     }
 
     private static void installContainerSuppressionHooks(
@@ -67,7 +116,7 @@ public final class SplitBarFeature {
             String springControllerClass,
             String springStateInnerClass, String resizableRectUpdateMethod,
             String threeSplitScrollStartMethod, String threeSplitEnlargeMethod,
-            boolean allowThreeTaskResize) {
+            boolean allowThreeTaskResize, String panoramaActiveMethod) {
         try {
             hookRuntime.findAndHookMethod(
                     HOOK_RESIZABLE_RECT_UPDATE_BLOCK,
@@ -76,7 +125,7 @@ public final class SplitBarFeature {
                     new HookCallback() {
                         @Override
                         protected void beforeHookedMethod(HookCall param) {
-                            SplitBar502Compat.blockF3(param, allowThreeTaskResize);
+                            SplitBar502Compat.blockF3(param, allowThreeTaskResize, panoramaActiveMethod);
                         }
                     });
             markHookInstalled(hookRegistry, HOOK_RESIZABLE_RECT_UPDATE_BLOCK,
@@ -95,7 +144,7 @@ public final class SplitBarFeature {
                     new HookCallback() {
                         @Override
                         protected void beforeHookedMethod(HookCall param) {
-                            SplitBar502Compat.blockE2Entry(param, allowThreeTaskResize);
+                            SplitBar502Compat.blockE2Entry(param, allowThreeTaskResize, panoramaActiveMethod);
                         }
                     });
             markHookInstalled(hookRegistry, HOOK_THREE_SPLIT_SCROLL_START_BLOCK,
@@ -130,7 +179,7 @@ public final class SplitBarFeature {
                         new HookCallback() {
                             @Override
                             protected void beforeHookedMethod(HookCall param) {
-                                SplitBar502Compat.blockI2(param, allowThreeTaskResize);
+                                SplitBar502Compat.blockI2(param, allowThreeTaskResize, panoramaActiveMethod);
                             }
                         });
                 markHookInstalled(hookRegistry, HOOK_THREE_SPLIT_ENLARGE_BLOCK,
@@ -150,7 +199,7 @@ public final class SplitBarFeature {
             ReflectionAccess reflectionAccess, String springControllerClass,
             String springStateInnerClass,
             String springDragHandlerMethod, String springAnimationInitMethod,
-            boolean allowThreeTaskResize) {
+            boolean allowThreeTaskResize, String panoramaActiveMethod) {
         try {
             Class<?> springController = findClassFirst(
                     reflectionAccess, lpparam.classLoader, springControllerClass);
@@ -171,7 +220,7 @@ public final class SplitBarFeature {
                         new HookCallback() {
                             @Override
                             protected void beforeHookedMethod(HookCall param) {
-                                SplitBar502Compat.blockEU0(param, allowThreeTaskResize);
+                                SplitBar502Compat.blockEU0(param, allowThreeTaskResize, panoramaActiveMethod);
                             }
                         });
                 markHookInstalled(hookRegistry, HOOK_SPRING_DRAG_HANDLER_BLOCK,
@@ -198,7 +247,7 @@ public final class SplitBarFeature {
                         new HookCallback() {
                             @Override
                             protected void beforeHookedMethod(HookCall param) {
-                                SplitBar502Compat.blockER(param, allowThreeTaskResize);
+                                SplitBar502Compat.blockER(param, allowThreeTaskResize, panoramaActiveMethod);
                             }
                         });
                 markHookInstalled(hookRegistry, HOOK_SPRING_ANIMATION_INIT_BLOCK,

@@ -33,6 +33,7 @@ public final class PsCanvasSymbols {
         THREE_SPLIT_ANIM,
         THREE_SPLIT_DRAG,
         CANVAS_CONTROLLER,
+        CLASSIC_LAYOUT,
         PANORAMA_MANAGER,
         SAVED_SPLIT_LAYOUT,
         THREE_TASK_RESIZE,
@@ -68,6 +69,10 @@ public final class PsCanvasSymbols {
         public String launchBoundsMethod;
         public String maskAnimMethod;
 
+        public AnimationMethods animationMethods;
+        public DragMethods dragMethods;
+        public LayoutMethods layoutMethods;
+
         // Resolved PanoramaModeManager contract (nullable). The two-task
         // capability is usable only when this complete method set is present on
         // one structurally unique manager class.
@@ -75,6 +80,7 @@ public final class PsCanvasSymbols {
         public String panoramaEnterMethod;
         public String panoramaExitMethod;
         public String twoTaskPredicateMethod;
+        public String panoramaGestureClass;
 
         // Saved split-layout persistence contract. This role is usable only
         // when the shortcut manager save/build/exists chain and the
@@ -97,6 +103,8 @@ public final class PsCanvasSymbols {
         public String threeTaskResizePredicateMethod;
         public String threeTaskResizeSpringDragMethod;
         public String threeTaskResizeSpringInitMethod;
+        public ResizeFocusMethods resizeFocusMethods;
+        public boolean threeTaskResizeCanAlignThreshold;
 
         // Debug-only P4 feasibility trace chain. This role is deliberately
         // independent from CANVAS_CONTROLLER and is not an enablement gate for
@@ -143,6 +151,19 @@ public final class PsCanvasSymbols {
         }
     }
 
+    public record AnimationMethods(String reset, String scaleDown, String check,
+                                   String longPress, String initialDrag) {}
+
+    public record DragMethods(String stateClass, String down, String move, String up,
+                              String initialize) {}
+
+    public record ResizeFocusMethods(String policyClass, String calculateDragMode,
+                                     String verticalBar, String focusedIndex,
+                                     String selectFocus) {}
+
+    public record LayoutMethods(String singleBounds, String multiBounds, String equalWidth,
+                                String conversionMark, String anchorRedirect) {}
+
     private final List<RoleSymbol> symbols;
 
     public PsCanvasSymbols() {
@@ -180,6 +201,9 @@ public final class PsCanvasSymbols {
         }
         if (role(Role.CANVAS_CONTROLLER).available()) {
             out.add("canvasController");
+        }
+        if (role(Role.CLASSIC_LAYOUT).available()) {
+            out.add("classicLayout");
         }
         if (role(Role.PANORAMA_MANAGER).available()) {
             out.add("twoTaskPanorama");

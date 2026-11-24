@@ -166,6 +166,10 @@ public final class PsCanvasHooks {
             activeProfile = profile;
         }
 
+        PsCanvasSymbols.RoleSymbol panoramaManager =
+                symbols.role(PsCanvasSymbols.Role.PANORAMA_MANAGER);
+        String panoramaActiveMethod = panoramaManager.available()
+                ? panoramaManager.panoramaActiveMethod : "M";
         // Install per capability group. A missing role only SKIPs its own group.
         if (symbols.role(PsCanvasSymbols.Role.SSTO_FLEXIBLE).available()) {
             PsCanvasSymbols.RoleSymbol ssto =
@@ -184,13 +188,9 @@ public final class PsCanvasHooks {
                     transitionClass, "Q", "u0", "I0");
             PanoramaFeature.installLaunchGuard(lpparam, hookRuntime, hookRegistry,
                     reflectionAccess, transitionClass, "L0",
-                    "getPanoramaModeManager", "M");
-            PsCanvasSymbols.RoleSymbol panoramaManager =
-                    symbols.role(PsCanvasSymbols.Role.PANORAMA_MANAGER);
+                    "getPanoramaModeManager", panoramaActiveMethod);
             boolean twoTaskPanoramaCapability = panoramaManager.available()
                     && panoramaManager.twoTaskPredicateMethod != null;
-            String panoramaActiveMethod = twoTaskPanoramaCapability
-                    ? panoramaManager.panoramaActiveMethod : "M";
             String panoramaEnterMethod = twoTaskPanoramaCapability
                     ? panoramaManager.panoramaEnterMethod : "z";
             String panoramaExitMethod = twoTaskPanoramaCapability
@@ -237,10 +237,22 @@ public final class PsCanvasHooks {
                 if (dragClass == null && profile != null) {
                     dragClass = profile.threeSplitDragClass();
                 }
+                PsCanvasSymbols.AnimationMethods animationMethods =
+                        symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_ANIM).animationMethods;
+                if (animationMethods == null) {
+                    animationMethods = KnownSymbolHints.LEGACY_ANIMATION_METHODS;
+                }
+                PsCanvasSymbols.DragMethods dragMethods =
+                        symbols.role(PsCanvasSymbols.Role.THREE_SPLIT_DRAG).dragMethods;
+                if (dragMethods == null) {
+                    dragMethods = KnownSymbolHints.LEGACY_DRAG_METHODS;
+                }
                 PinchGestureFeature.installTouchHooks(lpparam, hookRuntime, hookRegistry,
-                        reflectionAccess, animationClass, dragClass, "x1.a",
-                        EMBEDDED_VIEW_DECOR, "H0", "U0", "e0", "p0", "y0",
-                        "b", "c", "d", "e");
+                        reflectionAccess, animationClass, dragClass, dragMethods.stateClass(),
+                        EMBEDDED_VIEW_DECOR, animationMethods.reset(), animationMethods.scaleDown(),
+                        animationMethods.check(), animationMethods.longPress(),
+                        animationMethods.initialDrag(), dragMethods.down(), dragMethods.move(),
+                        dragMethods.up(), dragMethods.initialize());
                 if (PinchGestureFeature.allTouchHooksInstalled(hookRegistry)) {
                     committed = hookRuntime.commitGroup(touchGroup);
                 }
@@ -277,16 +289,23 @@ public final class PsCanvasHooks {
         // The remaining groups are independent capabilities: let them run and each
         // one logs its own install / failure. They no longer depend on a profile.
         PanoramaFeature.installExitGuard(lpparam, hookRuntime, hookRegistry,
-                reflectionAccess, CONTAINER_VIEW, "getPanoramaModeManager", "A",
+                reflectionAccess, CONTAINER_VIEW, "getPanoramaModeManager",
+                panoramaManager.available() ? panoramaManager.panoramaExitMethod : "A",
+                panoramaManager.panoramaGestureClass,
                 "com.oplus.pscanvas.canvasmode.canvas.B0",
                 "com.oplus.pscanvas.canvasmode.canvas.A0");
+        PsCanvasSymbols.RoleSymbol classicLayout = symbols.role(PsCanvasSymbols.Role.CLASSIC_LAYOUT);
+        PsCanvasSymbols.LayoutMethods layoutMethods = classicLayout.available()
+                ? classicLayout.layoutMethods : KnownSymbolHints.LEGACY_LAYOUT_METHODS;
         ClassicLayoutFeature.install(lpparam, hookRuntime, hookRegistry,
-                UTIL, "o", "n", "M1");
+                classicLayout.available() ? classicLayout.className : UTIL,
+                layoutMethods.singleBounds(), layoutMethods.multiBounds(), layoutMethods.equalWidth());
         ClassicCanvasController.installDirectEntryHook(lpparam, hookRuntime, hookRegistry,
                 INSTANCE_STATE_STORE, CONTAINER_ACTIVITY, "onCreate");
         ClassicCanvasController.installConversionAnchorHooks(lpparam, hookRuntime,
                 hookRegistry, reflectionAccess, INSTANCE_STATE_STORE, CONTAINER_VIEW,
-                "e3", "R", "getAdapter", "getCount", "n",
+                layoutMethods.conversionMark(), layoutMethods.anchorRedirect(),
+                "getAdapter", "getCount", "n",
                 ".canvasmode.canvas.ContainerActivity$", "c");
         SplitBarFeature.install(lpparam, hookRuntime, hookRegistry, reflectionAccess,
                 threeTaskResize.className, threeTaskResize.threeTaskResizeSpringClass,
@@ -296,7 +315,9 @@ public final class PsCanvasHooks {
                 threeTaskResize.threeTaskResizeEnlargeMethod,
                 threeTaskResize.threeTaskResizeSpringDragMethod,
                 threeTaskResize.threeTaskResizeSpringInitMethod,
-                featureManager.isEnabled(FeatureManager.Feature.ADJUSTABLE_WINDOW_SIZE));
+                featureManager.isEnabled(FeatureManager.Feature.ADJUSTABLE_WINDOW_SIZE),
+                panoramaActiveMethod, threeTaskResize.resizeFocusMethods,
+                threeTaskResize.threeTaskResizeCanAlignThreshold);
 
         logHookRegistrySnapshot(hookRegistry);
         PsCanvasLog.i("install: capability-driven install complete;"

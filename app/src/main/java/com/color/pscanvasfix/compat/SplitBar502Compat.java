@@ -36,8 +36,10 @@ public final class SplitBar502Compat {
      * 700 uses this when entering three-split-together mode to recalculate
      * bounds for 3 equal columns. 502 panorama manages this via adapter n().
      */
-    public static void blockF3(HookCall param, boolean allowThreeTaskResize) {
-        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+    public static void blockF3(HookCall param, boolean allowThreeTaskResize,
+                               String panoramaActiveMethod) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize,
+                panoramaActiveMethod)) {
             return;
         }
         try {
@@ -61,8 +63,10 @@ public final class SplitBar502Compat {
      * Block containerView.E2() — startScrollSplitBarInThreeSplit.
      * 502 has no three-split scroll bar animation. Returns empty list.
      */
-    public static void blockE2Entry(HookCall param, boolean allowThreeTaskResize) {
-        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+    public static void blockE2Entry(HookCall param, boolean allowThreeTaskResize,
+                               String panoramaActiveMethod) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize,
+                panoramaActiveMethod)) {
             return;
         }
         PsCanvasLog.d("blocked E2 startScrollSplitBarInThreeSplit");
@@ -74,8 +78,10 @@ public final class SplitBar502Compat {
      * 502 uses ContainerView.V(index, 1) for panorama pan instead of
      * 700's drag-to-enlarge in three-split mode.
      */
-    public static void blockI2(HookCall param, boolean allowThreeTaskResize) {
-        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+    public static void blockI2(HookCall param, boolean allowThreeTaskResize,
+                               String panoramaActiveMethod) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize,
+                panoramaActiveMethod)) {
             return;
         }
         PsCanvasLog.d("blocked i2 startEnlarge in three-split");
@@ -90,8 +96,10 @@ public final class SplitBar502Compat {
      * 700's unified spring physics drag. Block entirely so the canvas
      * never enters three-split drag mode.
      */
-    public static void blockEU0(HookCall param, boolean allowThreeTaskResize) {
-        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+    public static void blockEU0(HookCall param, boolean allowThreeTaskResize,
+                               String panoramaActiveMethod) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize,
+                panoramaActiveMethod)) {
             return;
         }
         PsCanvasLog.d("blocked E.u0 three-split spring drag");
@@ -103,8 +111,10 @@ public final class SplitBar502Compat {
      * Must be blocked because u0() depends on the SpringAnimation
      * created here (SpringForce with stiffness=0.15, dampingRatio=0.0).
      */
-    public static void blockER(HookCall param, boolean allowThreeTaskResize) {
-        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize)) {
+    public static void blockER(HookCall param, boolean allowThreeTaskResize,
+                               String panoramaActiveMethod) {
+        if (shouldPreserveOemThreeTaskResize(param.thisObject, allowThreeTaskResize,
+                panoramaActiveMethod)) {
             return;
         }
         PsCanvasLog.d("blocked E.R spring animation init");
@@ -113,6 +123,11 @@ public final class SplitBar502Compat {
 
     static boolean shouldPreserveOemThreeTaskResize(
             Object holder, boolean allowThreeTaskResize) {
+        return shouldPreserveOemThreeTaskResize(holder, allowThreeTaskResize, "M");
+    }
+
+    static boolean shouldPreserveOemThreeTaskResize(
+            Object holder, boolean allowThreeTaskResize, String panoramaActiveMethod) {
         if (!allowThreeTaskResize || holder == null || SplitPolicyCompat.inTransition()) {
             return false;
         }
@@ -121,7 +136,7 @@ public final class SplitBar502Compat {
         // distinguishes a real panorama session from a normal resized canvas.
         Object containerView = holder.getClass().getName().contains("ContainerView")
                 ? holder : ThreeSplitTouch502Compat.findContainerView(holder);
-        return ThreeSplitTouch502Compat.resolveThreeTaskResizeState(containerView)
+        return ThreeSplitTouch502Compat.resolveThreeTaskResizeState(containerView, panoramaActiveMethod)
                 == ThreeSplitTouch502Compat.ThreeTaskResizeState.NORMAL;
     }
 

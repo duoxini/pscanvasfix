@@ -34,7 +34,7 @@ public final class ThreeSplitTouch502CompatReflectionTest {
                 "reflectionAccess.callMethod(adapter, \"getCount\")",
                 "reflectionAccess.callMethod(adapter, \"n\")",
                 "reflectionAccess.callMethod(\n                    containerView, \"getPanoramaModeManager\")",
-                "reflectionAccess.callMethod(panoramaManager, \"M\")",
+                "reflectionAccess.callMethod(panoramaManager, panoramaActiveMethod)",
                 "reflectionAccess.callMethod(containerView, \"i1\")",
                 "reflectionAccess.callMethod(containerView, \"getAdapter\")",
                 "reflectionAccess.callMethod(adapter, \"getCount\")",

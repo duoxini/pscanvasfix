@@ -111,7 +111,8 @@ public final class PanoramaFeature {
                                         HookRegistry hookRegistry,
                                         ReflectionAccess reflectionAccess,
                                         String containerViewClass, String managerGetter,
-                                        String exitMethod, String... managerFallbackClasses) {
+                                        String exitMethod, String gestureManagerClass,
+                                        String... managerFallbackClasses) {
         Class<?> managerClass = resolveManagerClass(lpparam, reflectionAccess,
                 containerViewClass, managerGetter, managerFallbackClasses);
         if (managerClass == null) {
@@ -127,7 +128,9 @@ public final class PanoramaFeature {
                         @Override
                         protected void beforeHookedMethod(HookCall param) {
                             if (!Boolean.TRUE.equals(DIRECTIONAL_EXIT_ALLOWED.get())
-                                    && isCanvasGestureManagerCall()) {
+                                    && isCanvasGestureManagerCall(gestureManagerClass)
+                                    && (gestureManagerClass == null
+                                    || isSupportedCanvasSize(param.thisObject, reflectionAccess))) {
                                 param.setResult(null);
                                 PsCanvasLog.i("260608 blocked single-tap panorama exit");
                             }
@@ -245,11 +248,25 @@ public final class PanoramaFeature {
         }
     }
 
-    private static boolean isCanvasGestureManagerCall() {
+    private static boolean isSupportedCanvasSize(Object manager, ReflectionAccess reflection) {
+        try {
+            Object container = SplitPolicyCompat.findContainerView(manager);
+            if (container != null) {
+                Object adapter = reflection.callMethod(container, "getAdapter");
+                Object count = reflection.callMethod(adapter, "getCount");
+                return Integer.valueOf(2).equals(count) || Integer.valueOf(3).equals(count);
+            }
+        } catch (RuntimeException ignored) {
+            // Let the OEM exit proceed if the canvas is unavailable.
+        }
+        return false;
+    }
+
+    private static boolean isCanvasGestureManagerCall(String gestureManagerClass) {
         StackTraceElement[] trace = Thread.currentThread().getStackTrace();
         for (int index = 0; index < Math.min(trace.length, 24); index++) {
             String className = trace[index].getClassName();
-            if ((className.endsWith(".canvas.y")
+            if ((className.equals(gestureManagerClass) || className.endsWith(".canvas.y")
                     || className.endsWith(".canvas.C0332y"))
                     && "T".equals(trace[index].getMethodName())) {
                 return true;

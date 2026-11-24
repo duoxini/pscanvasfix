@@ -38,6 +38,11 @@ public final class ThreeSplitTouch502Compat {
      * unexpected return types, and reflection failures stay unknown.
      */
     static ThreeTaskResizeState resolveThreeTaskResizeState(Object containerView) {
+        return resolveThreeTaskResizeState(containerView, "M");
+    }
+
+    static ThreeTaskResizeState resolveThreeTaskResizeState(
+            Object containerView, String panoramaActiveMethod) {
         if (containerView == null) {
             return ThreeTaskResizeState.UNKNOWN;
         }
@@ -66,7 +71,7 @@ public final class ThreeSplitTouch502Compat {
             if (panoramaManager == null) {
                 return ThreeTaskResizeState.UNKNOWN;
             }
-            Object panoramaActive = reflectionAccess.callMethod(panoramaManager, "M");
+            Object panoramaActive = reflectionAccess.callMethod(panoramaManager, panoramaActiveMethod);
             if (!(panoramaActive instanceof Boolean)) {
                 return ThreeTaskResizeState.UNKNOWN;
             }

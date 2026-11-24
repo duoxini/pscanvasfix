@@ -30,6 +30,8 @@ import java.util.Set;
 public final class SavedSplitLayoutFeature {
     public static final String EXTRA_SAVED_LAYOUT =
             "com.color.pscanvasfix.extra.SAVED_SPLIT_LAYOUT";
+    private static final String EXTRA_SAVED_SHORTCUT_ID =
+            "com.color.pscanvasfix.extra.SAVED_SPLIT_SHORTCUT_ID";
 
     public static final String HOOK_SAVE_CONTEXT = "saved_layout.save_context";
     public static final String HOOK_BUILD_PAYLOAD = "saved_layout.build_payload";
@@ -195,6 +197,7 @@ public final class SavedSplitLayoutFeature {
                                 if (state.targetShortcutId != null) {
                                     call.args[1] = state.targetShortcutId;
                                 }
+                                state.writtenShortcutId = (String) call.args[1];
                             }
                         }
                     });
@@ -209,8 +212,11 @@ public final class SavedSplitLayoutFeature {
                                     || !(call.args[0] instanceof PersistableBundle)) {
                                 return;
                             }
-                            ((PersistableBundle) call.args[0]).putString(
-                                    EXTRA_SAVED_LAYOUT, state.payload);
+                            PersistableBundle extras = (PersistableBundle) call.args[0];
+                            extras.putString(EXTRA_SAVED_LAYOUT, state.payload);
+                            if (state.writtenShortcutId != null) {
+                                extras.putString(EXTRA_SAVED_SHORTCUT_ID, state.writtenShortcutId);
+                            }
                         }
                     });
 
@@ -309,11 +315,13 @@ public final class SavedSplitLayoutFeature {
                             }
                             activeShortcutId = null;
                             RESTORE_SHORTCUT_ID.remove();
-                            String shortcutId = deriveShortcutId((Bundle) call.args[0]);
+                            Bundle launch = (Bundle) call.args[0];
+                            String shortcutId = resolveLaunchedShortcutId(launch,
+                                    call.thisObject instanceof Context ? (Context) call.thisObject : null);
                             if (shortcutId != null) {
                                 RESTORE_SHORTCUT_ID.set(shortcutId);
                             }
-                            restoreTwoTaskRatio((Bundle) call.args[0]);
+                            restoreTwoTaskRatio(launch);
                         }
 
                         @Override
@@ -478,6 +486,42 @@ public final class SavedSplitLayoutFeature {
         return shortcutId(packages, exactUsers);
     }
 
+    private static String resolveLaunchedShortcutId(Bundle bundle, Context context) {
+        String orderedId = deriveShortcutId(bundle);
+        String savedId = bundle.getString(EXTRA_SAVED_SHORTCUT_ID);
+        if (sameShortcutMembers(orderedId, savedId)) {
+            return savedId;
+        }
+
+        // Older saves identify the layout but did not record the original pinned ID.
+        // Match the exact saved payload so the same apps in a second arrangement stay separate.
+        String payload = bundle.getString(EXTRA_SAVED_LAYOUT);
+        if (orderedId == null || payload == null || context == null) {
+            return orderedId;
+        }
+        try {
+            ShortcutManager manager = context.getSystemService(ShortcutManager.class);
+            if (manager == null) {
+                return orderedId;
+            }
+            String match = null;
+            for (ShortcutInfo shortcut : manager.getPinnedShortcuts()) {
+                PersistableBundle extras = shortcut.getExtras();
+                if (sameShortcutMembers(orderedId, shortcut.getId()) && extras != null
+                        && payload.equals(extras.getString(EXTRA_SAVED_LAYOUT))) {
+                    if (match != null) {
+                        return orderedId;
+                    }
+                    match = shortcut.getId();
+                }
+            }
+            return match == null ? orderedId : match;
+        } catch (RuntimeException error) {
+            PsCanvasLog.w("[SavedLayout] pinned shortcut lookup unavailable: " + error);
+            return orderedId;
+        }
+    }
+
     private static void restoreTwoTaskRatio(Bundle bundle) {
         String encoded = bundle.getString(EXTRA_SAVED_LAYOUT);
         Optional<SavedSplitLayoutCodec.Layout> decoded =
@@ -573,6 +617,7 @@ public final class SavedSplitLayoutFeature {
         final int[] dividerRatios;
         String payload;
         String targetShortcutId;
+        String writtenShortcutId;
         Context context;
 
         SaveState(int taskCount, int layoutOrientation, int[] dividerRatios) {

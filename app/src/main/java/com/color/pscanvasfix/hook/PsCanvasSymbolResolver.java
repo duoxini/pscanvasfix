@@ -93,7 +93,9 @@ public final class PsCanvasSymbolResolver {
     public static PsCanvasSymbols resolve(List<DexClass> dexClasses) {
         Map<String, DexClass> candidates = new LinkedHashMap<>();
         for (DexClass cls : dexClasses) {
-            if (inScope(cls.name)) {
+            if (inScope(cls.name) || KnownSymbolHints.ANIMATION_MANAGER.equals(cls.name)
+                    || KnownSymbolHints.DRAG_MANAGER.equals(cls.name)
+                    || hasValidSignature(cls, MethodMatcher::isSstoFlexibleConstructor)) {
                 candidates.put(cls.name, cls);
             }
         }
@@ -108,6 +110,7 @@ public final class PsCanvasSymbolResolver {
         resolveThreeSplitAnim(result, candidates, claimed);
         resolveThreeSplitDrag(result, candidates, claimed);
         resolveCanvasController(result, candidates, claimed);
+        resolveClassicLayout(result, dexClasses);
         SavedSplitLayoutSymbolResolver.resolveInto(result, dexClasses);
         ThreeTaskResizeSymbolResolver.resolveInto(result, dexClasses);
         // Independent debug-only P4 trace contract. It scans the exact stable
@@ -229,6 +232,18 @@ public final class PsCanvasSymbolResolver {
                                               Map<String, DexClass> candidates,
                                               List<String> claimed) {
         RoleSymbol symbol = out.role(Role.THREE_SPLIT_ANIM);
+        DexClass animation = candidates.get(KnownSymbolHints.ANIMATION_MANAGER);
+        PsCanvasSymbols.AnimationMethods methods = KnownSymbolHints.ANIMATION_METHODS;
+        if (hasMethod(animation, methods.reset(), "V")
+                && hasMethod(animation, methods.scaleDown(), "V", "Z")
+                && hasMethod(animation, methods.check(), "V", "I", "I")
+                && hasMethod(animation, methods.longPress(), "V")
+                && hasMethod(animation, methods.initialDrag(), "Z")) {
+            setKnownRole(symbol, animation);
+            symbol.animationMethods = methods;
+            claimed.add(animation.name);
+            return;
+        }
         if (tryKnownSymbol(symbol, Role.THREE_SPLIT_ANIM, candidates, claimed,
                 cls -> hasValidSignature(cls, MethodMatcher::hasBooleanMethod))) {
             return;
@@ -241,6 +256,18 @@ public final class PsCanvasSymbolResolver {
                                               Map<String, DexClass> candidates,
                                               List<String> claimed) {
         RoleSymbol symbol = out.role(Role.THREE_SPLIT_DRAG);
+        DexClass drag = candidates.get(KnownSymbolHints.DRAG_MANAGER);
+        PsCanvasSymbols.DragMethods methods = KnownSymbolHints.DRAG_METHODS;
+        String state = descriptor(methods.stateClass());
+        if (hasMethod(drag, methods.down(), "V", state, MethodMatcher.DESC_MOTION_EVENT)
+                && hasMethod(drag, methods.move(), "V", state, MethodMatcher.DESC_MOTION_EVENT)
+                && hasMethod(drag, methods.up(), "V", state)
+                && hasMethod(drag, methods.initialize(), "V", MethodMatcher.DESC_EMBEDDED_DECOR)) {
+            setKnownRole(symbol, drag);
+            symbol.dragMethods = methods;
+            claimed.add(drag.name);
+            return;
+        }
         if (tryKnownSymbol(symbol, Role.THREE_SPLIT_DRAG, candidates, claimed,
                 cls -> hasValidSignature(cls, MethodMatcher::hasMotionEventMethod)
                         && hasValidSignature(cls, MethodMatcher::hasEmbeddedDecorParam))) {
@@ -283,15 +310,11 @@ public final class PsCanvasSymbolResolver {
         }
 
         DexClass manager = structuralMatches.get(0);
-        String active = findUniqueHintedMethod(manager,
-                KnownSymbolHints.panoramaActiveMethods(), MethodMatcher::isNoArgBoolean);
-        String enter = findUniqueHintedMethod(manager,
-                KnownSymbolHints.panoramaEnterMethods(), MethodMatcher::isBooleanVoid);
-        String exit = findUniqueHintedMethod(manager,
-                KnownSymbolHints.panoramaExitMethods(), MethodMatcher::isBooleanVoid);
-        String twoTaskPredicate = findUniqueHintedMethod(manager,
-                KnownSymbolHints.twoTaskPredicateMethods(), MethodMatcher::isNoArgBoolean);
-        if (active == null || enter == null || exit == null || twoTaskPredicate == null) {
+        KnownSymbolHints.PanoramaMethods methods = KnownSymbolHints.panoramaContract(manager.name);
+        if (!hasMethod(manager, methods.active(), MethodMatcher.DESC_BOOLEAN)
+                || !hasMethod(manager, methods.enter(), MethodMatcher.DESC_VOID, MethodMatcher.DESC_BOOLEAN)
+                || !hasMethod(manager, methods.exit(), MethodMatcher.DESC_VOID, MethodMatcher.DESC_BOOLEAN)
+                || !hasMethod(manager, methods.twoTaskPredicate(), MethodMatcher.DESC_BOOLEAN)) {
             symbol.className = manager.name;
             symbol.score = 50;
             symbol.status = Status.AMBIGUOUS;
@@ -301,10 +324,14 @@ public final class PsCanvasSymbolResolver {
 
         symbol.className = manager.name;
         symbol.score = 90;
-        symbol.panoramaActiveMethod = active;
-        symbol.panoramaEnterMethod = enter;
-        symbol.panoramaExitMethod = exit;
-        symbol.twoTaskPredicateMethod = twoTaskPredicate;
+        symbol.panoramaActiveMethod = methods.active();
+        symbol.panoramaEnterMethod = methods.enter();
+        symbol.panoramaExitMethod = methods.exit();
+        symbol.twoTaskPredicateMethod = methods.twoTaskPredicate();
+        if (methods.gestureClass() != null && hasMethod(candidates.get(methods.gestureClass()),
+                "T", "Z", MethodMatcher.DESC_MOTION_EVENT)) {
+            symbol.panoramaGestureClass = methods.gestureClass();
+        }
         symbol.status = Status.FALLBACK;
         symbol.source = Source.KNOWN_SYMBOL;
         claimed.add(manager.name);
@@ -314,12 +341,73 @@ public final class PsCanvasSymbolResolver {
                                                 Map<String, DexClass> candidates,
                                                 List<String> claimed) {
         RoleSymbol symbol = out.role(Role.CANVAS_CONTROLLER);
+        DexClass controller = candidates.get(KnownSymbolHints.CONTROLLER);
+        if (hasMethod(controller, "O", "V", "Z")
+                && hasMethod(candidates.get(KnownSymbolHints.CANVAS_PACKAGE + "view.ContainerView"),
+                        "getContainerController", descriptor(KnownSymbolHints.CONTROLLER))) {
+            setKnownRole(symbol, controller);
+            claimed.add(controller.name);
+            return;
+        }
         if (tryKnownSymbol(symbol, Role.CANVAS_CONTROLLER, candidates, claimed,
                 cls -> hasValidSignature(cls, MethodMatcher::hasBooleanMethod))) {
             return;
         }
         resolveStructuralProxy(symbol, candidates, claimed, CONTROLLER_THRESHOLD,
                 PsCanvasSymbolResolver::controllerScore);
+    }
+
+    private static void resolveClassicLayout(PsCanvasSymbols out, List<DexClass> classes) {
+        RoleSymbol symbol = out.role(Role.CLASSIC_LAYOUT);
+        DexClass container = findClass(classes, KnownSymbolHints.CANVAS_PACKAGE + "view.ContainerView");
+        if (!resolveClassicLayout(symbol, findClass(classes, KnownSymbolHints.CANVAS_UTILITY),
+                container, KnownSymbolHints.CANVAS_LAYOUT_METHODS)) {
+            resolveClassicLayout(symbol, findClass(classes, "B1.l"), container,
+                    KnownSymbolHints.LEGACY_LAYOUT_METHODS);
+        }
+    }
+
+    private static boolean resolveClassicLayout(RoleSymbol symbol, DexClass utility,
+                                                DexClass container, PsCanvasSymbols.LayoutMethods m) {
+        if (!hasMethod(utility, m.singleBounds(), MethodMatcher.DESC_BUNDLE,
+                MethodMatcher.DESC_INTENT, "I", "I")
+                || !hasMethod(utility, m.multiBounds(), MethodMatcher.DESC_BUNDLE,
+                        MethodMatcher.DESC_LIST, "I", MethodMatcher.DESC_BUNDLE)
+                || !hasMethod(utility, m.equalWidth(), MethodMatcher.DESC_LIST,
+                        MethodMatcher.DESC_LIST, "I", "F")
+                || !hasMethod(container, m.conversionMark(), "V",
+                        MethodMatcher.DESC_CONTEXT, MethodMatcher.DESC_LIST, "I")
+                || !hasMethod(container, m.anchorRedirect(), "Z", "I")) {
+            return false;
+        }
+        setKnownRole(symbol, utility);
+        symbol.layoutMethods = m;
+        return true;
+    }
+
+    static DexClass findClass(List<DexClass> classes, String name) {
+        for (DexClass cls : classes) {
+            if (name.equals(cls.name)) {
+                return cls;
+            }
+        }
+        return null;
+    }
+
+    static boolean hasMethod(DexClass cls, String name, String result, String... params) {
+        return cls != null && findUniqueHintedMethod(cls, Collections.singletonList(name),
+                m -> m.returnDescriptor.equals(result)
+                        && m.paramDescriptors.equals(java.util.Arrays.asList(params))) != null;
+    }
+
+    private static String descriptor(String className) {
+        return "L" + className.replace('.', '/') + ";";
+    }
+
+    private static void setKnownRole(RoleSymbol symbol, DexClass cls) {
+        symbol.className = cls.name;
+        symbol.status = Status.FALLBACK;
+        symbol.source = Source.KNOWN_SYMBOL;
     }
 
     /** Known-symbol fallback for SSTO_FLEXIBLE: also captures the resolved method names. */

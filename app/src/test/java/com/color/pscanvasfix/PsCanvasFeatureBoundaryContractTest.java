@@ -60,7 +60,8 @@ public final class PsCanvasFeatureBoundaryContractTest {
             "splitbar.three_split_scroll_start.block",
             "splitbar.three_split_enlarge.block",
             "splitbar.spring_drag_handler.block",
-            "splitbar.spring_animation_init.block"
+            "splitbar.spring_animation_init.block",
+            "splitbar.short_divider.focus"
     };
 
     private static final Pattern GENERATION_NAMED_TYPE = Pattern.compile(
@@ -92,10 +93,10 @@ public final class PsCanvasFeatureBoundaryContractTest {
                 .resolve("FourTaskTraceFeature.java"));
         String stableProduction = production.replace(diagnosticTrace, "");
 
-        assertEquals(35, occurrences(stableProduction, "hookRuntime.findAndHookMethod("));
+        assertEquals(36, occurrences(stableProduction, "hookRuntime.findAndHookMethod("));
         assertEquals(1, occurrences(stableProduction, "hookRuntime.findAndHookConstructor("));
         assertEquals(16, occurrences(stableProduction, "hookRuntime.invokeOriginalMethod("));
-        assertEquals(30, occurrences(stableProduction, "hookRegistry.declare("));
+        assertEquals(31, occurrences(stableProduction, "hookRegistry.declare("));
 
         assertEquals(10, occurrences(diagnosticTrace, "hookRuntime.findAndHookMethod("));
         assertEquals(0, occurrences(diagnosticTrace, "hookRuntime.findAndHookConstructor("));
@@ -104,12 +105,12 @@ public final class PsCanvasFeatureBoundaryContractTest {
     }
 
     @Test
-    public void keepsAllThirtyStableHookIdsUnique() throws IOException {
+    public void keepsStableHookIdsUnique() throws IOException {
         String production = aggregateJavaSources(productionRoot());
         Set<String> uniqueIds = new HashSet<>(Arrays.asList(STABLE_HOOK_IDS));
 
         assertEquals("The expected hook-id fixture itself must stay duplicate-free",
-                30, uniqueIds.size());
+                31, uniqueIds.size());
         for (String stableId : STABLE_HOOK_IDS) {
             assertEquals("Stable hook ID must have one production declaration: " + stableId,
                     1, occurrences(production, "\"" + stableId + "\""));

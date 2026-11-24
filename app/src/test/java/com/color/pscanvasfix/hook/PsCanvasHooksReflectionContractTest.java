@@ -118,11 +118,9 @@ public final class PsCanvasHooksReflectionContractTest {
                 "PanoramaFeature.installLaunchGuard(",
                 "ClassicCanvasController.installTransitionIntentPatch(",
                 "reflectionAccess, transitionClass, \"L0\",",
-                "\"getPanoramaModeManager\", \"M\")",
-                "symbols.role(PsCanvasSymbols.Role.PANORAMA_MANAGER)",
+                "\"getPanoramaModeManager\", panoramaActiveMethod)",
                 "panoramaManager.available()",
                 "panoramaManager.twoTaskPredicateMethod != null",
-                "panoramaManager.panoramaActiveMethod : \"M\"",
                 "panoramaManager.panoramaEnterMethod : \"z\"",
                 "panoramaManager.panoramaExitMethod : \"A\"",
                 "PinchGestureFeature.installScaleHook(",
@@ -288,14 +286,14 @@ public final class PsCanvasHooksReflectionContractTest {
             throws IOException {
         String source = productionSource();
 
-        assertEquals(35, occurrences(source, "hookRuntime.findAndHookMethod("));
+        assertEquals(36, occurrences(source, "hookRuntime.findAndHookMethod("));
         assertEquals(1, occurrences(source, "hookRuntime.findAndHookConstructor("));
-        assertEquals(30, occurrences(source, "hookRegistry.declare("));
-        assertEquals(30, occurrences(source, "markHookInstalled("));
-        assertEquals(35, occurrences(source, "markHookSkipped("));
-        assertEquals(30, occurrences(source, "markHookFailed("));
-        assertEquals(23, occurrences(source, "protected void beforeHookedMethod("));
-        assertEquals(14, occurrences(source, "protected void afterHookedMethod("));
+        assertEquals(31, occurrences(source, "hookRegistry.declare("));
+        assertEquals(31, occurrences(source, "markHookInstalled("));
+        assertEquals(36, occurrences(source, "markHookSkipped("));
+        assertEquals(31, occurrences(source, "markHookFailed("));
+        assertEquals(24, occurrences(source, "protected void beforeHookedMethod("));
+        assertEquals(15, occurrences(source, "protected void afterHookedMethod("));
         assertEquals(4, occurrences(source, "protected Object replaceHookedMethod("));
         assertEquals(16, occurrences(source, "hookRuntime.invokeOriginalMethod("));
         assertEquals(7, occurrences(source, "instanceStateStore."));
