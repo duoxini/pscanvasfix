@@ -1,4 +1,4 @@
-v1.6 适配 ColorOS 17（C17）自带的多窗口组件 `OplusFlexibleWindowUI`（`com.oplus.pscanvas`）`2.0.0`（`versionCode 20`）。
+v1.6 适配 ColorOS 17（C17）自带的多窗口组件 `OplusFlexibleWindowUI`（`com.oplus.pscanvas`），组件版本日期为 `260826`（`versionDate`）。
 
 ## 更新内容
 
